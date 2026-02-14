@@ -1227,18 +1227,17 @@
             <input type="password" class="coll-token" placeholder="Override token" value="${escapeHtml(token)}" autocomplete="off" />
           </div>
         `;
-        block.querySelector('.coll-baseUrl').addEventListener('blur', function() {
-          try {
-            const t = block.querySelector('.coll-token').value;
-            localStorage.setItem(STORAGE_COLL_PREFIX + name, JSON.stringify({ baseUrl: this.value, token: t }));
-          } catch (_) {}
-        });
-        block.querySelector('.coll-token').addEventListener('blur', function() {
+        function saveCollVars() {
           try {
             const b = block.querySelector('.coll-baseUrl').value;
-            localStorage.setItem(STORAGE_COLL_PREFIX + name, JSON.stringify({ baseUrl: b, token: this.value }));
+            const t = block.querySelector('.coll-token').value;
+            localStorage.setItem(STORAGE_COLL_PREFIX + name, JSON.stringify({ baseUrl: b, token: t }));
           } catch (_) {}
-        });
+        }
+        block.querySelector('.coll-baseUrl').addEventListener('blur', saveCollVars);
+        block.querySelector('.coll-baseUrl').addEventListener('input', saveCollVars);
+        block.querySelector('.coll-token').addEventListener('blur', saveCollVars);
+        block.querySelector('.coll-token').addEventListener('input', saveCollVars);
         list.appendChild(block);
       });
     }
@@ -1860,7 +1859,7 @@
       chartInstances = [];
 
       const s = report.summary || {};
-      const duration = s.duration || {};
+      const duration = (s && s.duration && typeof s.duration === 'object') ? s.duration : {};
       const runDate = report.startTime ? new Date(report.startTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '–';
       const execText = report.totalCalls
         ? `Total <strong>${report.totalCalls}</strong> requests in <strong>${(report.totalTime / 1000).toFixed(2)}s</strong>. Success rate <strong>${s.successRate ?? '0%'}</strong>. Average response time <strong>${duration.avg ?? 0} ms</strong> (p95: ${duration.p95 ?? 0} ms). Throughput <strong>${s.throughputPerSec ?? 0} req/s</strong>.`
@@ -1869,9 +1868,9 @@
       let statusCodes = s.statusCodeCounts && typeof s.statusCodeCounts === 'object' ? Object.entries(s.statusCodeCounts).sort((a, b) => Number(a[0]) - Number(b[0])) : [];
       if (!statusCodes.length && report.byRequest) {
         const codeCounts = {};
-        Object.values(report.byRequest).forEach(reqData => {
-          (reqData.results || []).forEach(r => {
-            const c = r.statusCode != null ? r.statusCode : 0;
+        Object.values(report.byRequest).filter(Boolean).forEach(reqData => {
+          (reqData.results || []).filter(Boolean).forEach(r => {
+            const c = r && r.statusCode != null ? r.statusCode : 0;
             codeCounts[c] = (codeCounts[c] || 0) + 1;
           });
         });
@@ -1955,8 +1954,8 @@
       `;
 
       for (const [reqId, data] of Object.entries(report.byRequest || {})) {
-        const st = data.stats || {};
-        const d = st.duration || {};
+        const st = (data && data.stats) ? data.stats : {};
+        const d = (st && st.duration && typeof st.duration === 'object') ? st.duration : {};
         html += `<tr>
           <td>${escapeHtml(data.name || reqId)}</td>
           <td>${escapeHtml(data.path || '-')}</td>
@@ -2023,7 +2022,7 @@
       const trendEl = document.getElementById('chartTrend');
       if (allResults.length && trendEl) {
         const labels = allResults.map((_, i) => (i + 1).toString());
-        const data = allResults.map(r => (r.duration != null && typeof r.duration === 'number' ? r.duration : 0));
+        const data = allResults.map(r => (r && r.duration != null && typeof r.duration === 'number' ? r.duration : 0));
         chartInstances.push(new Chart(trendEl, {
           type: 'line',
           data: { labels, datasets: [{ label: 'Response time (ms)', data, borderColor: 'rgba(0,212,170,0.9)', backgroundColor: 'rgba(0,212,170,0.1)', fill: true, tension: 0.2 }] },
@@ -2034,7 +2033,7 @@
       const byRequest = report.byRequest || {};
       const perApiEntries = Object.entries(byRequest);
       const perApiNames = perApiEntries.map(([id, d]) => (d.name || id).toString().slice(0, 25));
-      const perApiAvg = perApiEntries.map(([, d]) => (d.stats && d.stats.duration && d.stats.duration.avg) || 0);
+      const perApiAvg = perApiEntries.map(([, d]) => (d && d.stats && d.stats.duration && (d.stats.duration.avg != null)) ? d.stats.duration.avg : 0);
       const perApiEl = document.getElementById('chartPerApi');
       if (perApiNames.length && perApiEl) {
         chartInstances.push(new Chart(perApiEl, {
@@ -2077,7 +2076,7 @@
       if (!lastReport || reportContent.style.display === 'none') return;
       const report = lastReport;
       const s = report.summary || {};
-      const duration = s.duration || {};
+      const duration = (s && s.duration && typeof s.duration === 'object') ? s.duration : {};
       const runDate = report.startTime ? new Date(report.startTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '–';
       const reportDate = report.startTime ? new Date(report.startTime).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '–';
       const img1 = getChartImageDataUrl('chartSuccessFail');
@@ -2093,8 +2092,8 @@
 
       let tableRows = '';
       for (const [reqId, data] of Object.entries(report.byRequest || {})) {
-        const st = data.stats || {};
-        const d = st.duration || {};
+        const st = (data && data.stats) ? data.stats : {};
+        const d = (st && st.duration && typeof st.duration === 'object') ? st.duration : {};
         const name = (data.name || reqId).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const path = (data.path || '-').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         tableRows += `<tr><td>${name}</td><td>${path}</td><td>${st.totalRequests ?? 0}</td><td>${st.successCount ?? 0}</td><td>${st.failCount ?? 0}</td><td>${d.min ?? '-'}</td><td>${d.avg ?? '-'}</td><td>${d.max ?? '-'}</td><td>${d.p95 ?? '-'}</td><td>${st.successRate ?? '-'}</td></tr>`;

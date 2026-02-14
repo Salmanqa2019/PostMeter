@@ -317,12 +317,13 @@ function runWithConcurrency(tasks, concurrency) {
 }
 
 function computeStats(results) {
-  const durations = results.map(r => r.duration).filter(n => typeof n === 'number');
+  const safe = (results || []).filter(r => r && typeof r === 'object');
+  const durations = safe.map(r => r.duration).filter(n => typeof n === 'number');
   const sorted = [...durations].sort((a, b) => a - b);
   const sum = sorted.reduce((a, b) => a + b, 0);
   const n = sorted.length;
-  const success = results.filter(r => r.success).length;
-  const failed = results.filter(r => !r.success);
+  const success = safe.filter(r => r.success).length;
+  const failed = safe.filter(r => !r.success);
   const p50 = sorted[Math.floor(n * 0.5)] ?? 0;
   const p95 = sorted[Math.floor(n * 0.95)] ?? 0;
   const p99 = sorted[Math.floor(n * 0.99)] ?? 0;
@@ -333,15 +334,15 @@ function computeStats(results) {
   const errorCounts = {};
   errors.forEach(e => { errorCounts[e] = (errorCounts[e] || 0) + 1; });
   const statusCodeCounts = {};
-  results.forEach(r => {
+  safe.forEach(r => {
     const code = r.statusCode != null ? r.statusCode : 0;
     statusCodeCounts[code] = (statusCodeCounts[code] || 0) + 1;
   });
   return {
-    totalRequests: results.length,
+    totalRequests: safe.length,
     successCount: success,
     failCount: failed.length,
-    successRate: results.length ? (success / results.length * 100).toFixed(2) + '%' : '0%',
+    successRate: safe.length ? (success / safe.length * 100).toFixed(2) + '%' : '0%',
     duration: { min, max, avg: Math.round(avg), p50, p95, p99 },
     errors: errorCounts,
     rawDurations: durations,
@@ -394,11 +395,18 @@ app.get('/api/collections', (req, res) => {
 
 // Resolve baseUrl and token: collection-level overrides, then global (for Inherit)
 function resolveForRequest(item, globalBaseUrl, globalToken, collectionVariables) {
-  const name = item.collectionName || '';
-  const coll = (collectionVariables && name && collectionVariables[name]) || {};
-  const baseUrl = (coll.baseUrl != null && coll.baseUrl !== '') ? coll.baseUrl : (globalBaseUrl || '');
-  const token = (coll.token != null && coll.token !== '') ? coll.token : (globalToken || '');
-  return { baseUrl: baseUrl.trim(), token };
+  const name = (item.collectionName || '').trim();
+  let coll = {};
+  if (collectionVariables && name) {
+    coll = collectionVariables[name] || collectionVariables[name.trim()] || {};
+    if (!coll.baseUrl && typeof collectionVariables === 'object') {
+      const key = Object.keys(collectionVariables).find((k) => (k || '').trim() === name);
+      if (key) coll = collectionVariables[key] || {};
+    }
+  }
+  const baseUrl = (coll.baseUrl != null && String(coll.baseUrl).trim() !== '') ? String(coll.baseUrl).trim() : (globalBaseUrl || '').trim();
+  const token = (coll.token != null && String(coll.token).trim() !== '') ? coll.token : (globalToken || '');
+  return { baseUrl, token };
 }
 
 // POST send single request (payload, headers, auth from JSON)
@@ -431,7 +439,8 @@ app.post('/api/send', async (req, res) => {
 // POST run test (single / multiple / regression)
 app.post('/api/run', async (req, res) => {
   try {
-    const { type, requestIds, baseUrl, iterations = 1, concurrency = 1, globalVariables = {}, bearerToken, collectionVariables } = req.body;
+    const { type, requestIds, baseUrl, iterations = 1, concurrency = 1, globalVariables = {}, bearerToken, collectionVariables: cv } = req.body;
+    const collectionVariables = cv && typeof cv === 'object' ? cv : {};
     const gv = { ...globalVariables };
     if (bearerToken) gv.bearerToken = bearerToken;
     const filePath = getCollectionsPath();
@@ -461,8 +470,18 @@ app.post('/api/run', async (req, res) => {
     }
 
     const base = (baseUrl || '').trim();
-    if (!base && (flat[0]?.request?.endpoint || '').includes('<<baseUrl>>')) {
-      return res.status(400).json({ error: 'baseUrl is required' });
+    // Allow run when baseUrl is set globally OR at collection level (per request)
+    const needsBaseUrl = toRun.some((item) => (item.request?.endpoint || '').includes('<<baseUrl>>'));
+    if (needsBaseUrl) {
+      const missing = toRun.find((item) => {
+        if (!(item.request?.endpoint || '').includes('<<baseUrl>>')) return false;
+        const { baseUrl: resolvedBase } = resolveForRequest(item, base, gv.bearerToken, collectionVariables);
+        return !(resolvedBase && resolvedBase.trim());
+      });
+      if (missing) {
+        const cn = missing.collectionName || 'this request\'s collection';
+        return res.status(400).json({ error: 'baseUrl is required. Set it in Environment: either in Global (default) or under Per collection override for "' + cn + '".' });
+      }
     }
 
     const startTime = Date.now();
@@ -495,17 +514,18 @@ app.post('/api/run', async (req, res) => {
       requestCount: toRun.length,
       totalCalls: results.length,
       startTime: new Date(startTime).toISOString(),
-      allResultsInOrder: results.map(r => ({ duration: r.duration, success: r.success, statusCode: r.statusCode, name: r.name })),
+      allResultsInOrder: results.map(r => (r && typeof r === 'object' ? { duration: r.duration, success: r.success, statusCode: r.statusCode, name: r.name } : { duration: 0, success: false, statusCode: 0, name: '?' })),
       byRequest: {},
       summary: null,
     };
 
     for (const [reqId, reqResults] of Object.entries(byRequest)) {
+      const validResults = (reqResults || []).filter(Boolean);
       report.byRequest[reqId] = {
-        name: reqResults[0]?.name,
-        path: reqResults[0]?.path,
-        stats: computeStats(reqResults),
-        results: reqResults.map(({ duration, statusCode, success, error }) => ({ duration, statusCode, success, error })),
+        name: validResults[0]?.name,
+        path: validResults[0]?.path,
+        stats: computeStats(validResults),
+        results: validResults.map(r => ({ duration: r.duration, statusCode: r.statusCode, success: r.success, error: r.error })),
       };
     }
 
