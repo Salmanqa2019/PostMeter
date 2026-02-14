@@ -393,14 +393,18 @@ app.get('/api/collections', (req, res) => {
   }
 });
 
+function normalizeCollectionName(s) {
+  return (s || '').trim().replace(/\s+/g, ' ');
+}
+
 // Resolve baseUrl and token: collection-level overrides, then global (for Inherit)
 function resolveForRequest(item, globalBaseUrl, globalToken, collectionVariables) {
-  const name = (item.collectionName || '').trim();
+  const name = normalizeCollectionName(item.collectionName || '');
   let coll = {};
-  if (collectionVariables && name) {
-    coll = collectionVariables[name] || collectionVariables[name.trim()] || {};
-    if (!coll.baseUrl && typeof collectionVariables === 'object') {
-      const key = Object.keys(collectionVariables).find((k) => (k || '').trim() === name);
+  if (collectionVariables && typeof collectionVariables === 'object' && name) {
+    coll = collectionVariables[item.collectionName] || collectionVariables[name] || {};
+    if (!(coll.baseUrl != null && String(coll.baseUrl).trim() !== '')) {
+      const key = Object.keys(collectionVariables).find((k) => normalizeCollectionName(k) === name);
       if (key) coll = collectionVariables[key] || {};
     }
   }
