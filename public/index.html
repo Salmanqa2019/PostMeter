@@ -276,28 +276,88 @@
       transition: border-color var(--transition), color var(--transition);
     }
     .editor-bar .btn-save:hover { border-color: var(--accent); color: var(--accent); }
-    .editor-tabs {
+    .request-tabs-bar {
       display: flex;
-      gap: 0;
-      padding: 0 var(--space-4);
+      align-items: center;
+      min-height: 40px;
+      padding: 0 var(--space-2);
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
     }
+    .request-tabs-list { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; }
+    .request-tab {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      font-size: 0.8125rem; color: var(--text-secondary);
+      background: var(--surface2);
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      cursor: pointer;
+      max-width: 180px; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      transition: background var(--transition), color var(--transition);
+    }
+    .request-tab:hover { color: var(--text); background: var(--surface-hover); }
+    .request-tab.active { background: var(--bg-elevated); color: var(--accent); border-color: var(--border); }
+    .request-tab .tab-close { padding: 0 2px; opacity: 0.6; font-size: 1rem; line-height: 1; }
+    .request-tab .tab-close:hover { opacity: 1; color: var(--danger); }
+    .tree-folder .folder-name.editable, .tree-item.request .req-name.editable { cursor: text; }
+    .tree-folder .folder-name input.inline-edit, .tree-item.request .req-name input.inline-edit {
+      width: 100%; min-width: 80px; padding: 2px 6px; font-size: inherit; font-family: inherit;
+      background: var(--bg); color: var(--text); border: 1px solid var(--accent); border-radius: var(--radius-sm);
+      outline: none;
+    }
+    .editor-tabs {
+      display: flex;
+      gap: 0;
+      padding: var(--space-2) var(--space-4);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      align-items: center;
+      flex-wrap: wrap;
+    }
     .editor-tabs .etab {
-      padding: var(--space-3) var(--space-4);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
       font-size: 0.8125rem;
       font-weight: 500;
       color: var(--text-muted);
       background: transparent;
-      border: none;
-      border-bottom: 2px solid transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
       cursor: pointer;
       white-space: nowrap;
-      transition: color var(--transition);
+      transition: color var(--transition), background var(--transition), border-color var(--transition);
+      margin-right: var(--space-2);
+    }
+    .editor-tabs .etab::before {
+      content: '';
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--surface2);
+      flex-shrink: 0;
+      transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
     }
     .editor-tabs .etab:hover { color: var(--text-secondary); }
-    .editor-tabs .etab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .editor-tabs .etab.active { color: var(--accent); border-color: var(--accent); }
+    .editor-tabs .etab.active::before {
+      border-color: var(--accent);
+      background: var(--accent);
+      box-shadow: inset 0 0 0 2px var(--surface);
+    }
+    .editor-tab-content .editor-tab-placeholder {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      padding: var(--space-6);
+      text-align: center;
+    }
     .editor-tab-content {
       padding: var(--space-4);
       background: var(--surface2);
@@ -308,6 +368,14 @@
     .editor-tab-content .params-table th, .editor-tab-content .params-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--border); }
     .editor-tab-content .params-table th { color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
     .editor-tab-content .params-table input { width: 100%; height: 36px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 0.8125rem; }
+    .editor-tab-content .params-table .btn-row-del { width: 36px; min-width: 36px; height: 36px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); cursor: pointer; font-size: 1rem; line-height: 1; transition: color var(--transition); }
+    .editor-tab-content .params-table .btn-row-del:hover { color: var(--danger); }
+    .editor-tab-content .params-table-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
+    .editor-tab-content .btn-add-row { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius); background: transparent; color: var(--text-muted); font-size: 0.8125rem; font-weight: 500; cursor: pointer; transition: all var(--transition); }
+    .editor-tab-content .btn-add-row:hover { border-color: var(--accent); color: var(--accent); }
+    .editor-tab-content .auth-form label { display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-bottom: var(--space-1); }
+    .editor-tab-content .auth-form .field { margin-bottom: var(--space-4); }
+    .editor-tab-content .auth-form select, .editor-tab-content .auth-form input[type="text"], .editor-tab-content .auth-form input[type="password"] { width: 100%; max-width: 320px; height: 36px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 0.8125rem; }
     .var-highlight { color: var(--info); font-weight: 500; }
     .load-test-bar {
       display: flex;
@@ -318,8 +386,47 @@
       border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
+    .load-test-bar { align-items: center; }
+    .load-test-hint { font-size: 0.7rem; color: var(--text-muted); margin-left: var(--space-2); max-width: 420px; }
     .load-test-bar label { font-size: 0.75rem; color: var(--text-muted); margin-right: var(--space-1); font-weight: 500; }
     .load-test-bar input[type="number"] { width: 72px; height: 36px; padding: 0 var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.8125rem; }
+    .load-test-bar .sla-inline { display: inline-flex; align-items: center; gap: var(--space-1); }
+    .load-test-bar .sla-inline input { width: 52px; }
+    .sla-badge { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-left: var(--space-2); }
+    .sla-badge.pass { background: var(--success); color: var(--bg); }
+    .sla-badge.fail { background: var(--danger); color: var(--bg); }
+    .load-test-user-data { padding: var(--space-3) var(--space-4); background: var(--surface); border-bottom: 1px solid var(--border); }
+    .user-data-drop-paste { border: 2px dashed var(--border); border-radius: var(--radius); padding: var(--space-2); transition: border-color var(--transition), background var(--transition); }
+    .user-data-drop-paste.drag-over { border-color: var(--accent); background: var(--accent-muted); }
+    .user-data-drop-paste .user-data-paste { width: 100%; min-height: 64px; padding: var(--space-2); border: none; border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; resize: vertical; display: block; margin-bottom: var(--space-2); }
+    .user-data-drop-paste .user-data-paste::placeholder { color: var(--text-muted); }
+    .user-data-drop-paste .user-data-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+    .user-data-drop-paste .user-data-count { font-size: 0.8125rem; font-weight: 600; color: var(--accent); }
+    .btn-sm { padding: var(--space-1) var(--space-2); font-size: 0.75rem; }
+    .runner-output-wrap { background: var(--surface2); border-bottom: 1px solid var(--border); max-height: 360px; display: flex; flex-direction: column; }
+    .runner-output-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); background: var(--surface); border-bottom: 1px solid var(--border); }
+    .runner-output-title { font-weight: 600; font-size: 0.875rem; }
+    .runner-output-meta { color: var(--text-muted); font-size: 0.8125rem; flex: 1; }
+    .runner-output-list { overflow: auto; padding: var(--space-2); }
+    .runner-item { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: var(--space-2); overflow: hidden; }
+    .runner-item-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); cursor: pointer; background: var(--surface); transition: background var(--transition); }
+    .runner-item-head:hover { background: var(--surface-hover); }
+    .runner-item-head .method { font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+    .runner-item-head .method.GET { background: var(--success); color: var(--bg); }
+    .runner-item-head .method.POST { background: var(--info); color: var(--bg); }
+    .runner-item-head .method.PUT { background: var(--warn); color: var(--bg); }
+    .runner-item-head .method.DELETE { background: var(--danger); color: var(--bg); }
+    .runner-item-head .method.PATCH { background: var(--accent); color: var(--bg); }
+    .runner-item-head .name { flex: 1; font-size: 0.8125rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runner-item-head .status { font-size: 0.75rem; font-weight: 600; }
+    .runner-item-head .status.ok { color: var(--success); }
+    .runner-item-head .status.err { color: var(--danger); }
+    .runner-item-head .time { font-size: 0.75rem; color: var(--text-muted); }
+    .runner-item-head .chevron { font-size: 0.75rem; color: var(--text-muted); transition: transform var(--transition); }
+    .runner-item.expanded .chevron { transform: rotate(90deg); }
+    .runner-item-body { display: none; padding: var(--space-2); background: var(--bg); border-top: 1px solid var(--border); max-height: 200px; overflow: auto; }
+    .runner-item.expanded .runner-item-body { display: block; }
+    .runner-item-body pre { margin: 0; font-size: 0.75rem; white-space: pre-wrap; word-break: break-all; }
     .load-test-bar .mode-tabs { display: flex; gap: var(--space-1); }
     .load-test-bar .mode-tabs button { height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); font-size: 0.8125rem; font-weight: 500; cursor: pointer; transition: all var(--transition); }
     .load-test-bar .mode-tabs button.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
@@ -357,7 +464,7 @@
     }
     .sidebar-resize {
       position: absolute;
-      left: 0;
+      right: 0;
       top: 0;
       bottom: 0;
       width: 6px;
@@ -821,8 +928,10 @@
     .apis-list-wrap .api-line .m { font-size: 0.625rem; padding: 2px 5px; border-radius: 4px; min-width: 32px; text-align: center; font-weight: 600; }
     .sidebar .head-btns .btn-add { color: var(--accent); border-color: var(--accent); }
     .sidebar .head-btns .btn-add:hover { background: var(--accent-muted); }
-    .tree-folder .tree-actions, .tree-item.request .tree-actions { opacity: 0; margin-left: auto; flex-shrink: 0; display: flex; gap: var(--space-1); align-items: center; }
-    .tree-folder:hover .tree-actions, .tree-item.request:hover .tree-actions, .tree-item.request.selected .tree-actions { opacity: 1; }
+.tree-folder .tree-actions, .tree-item.request .tree-actions { opacity: 0; margin-left: auto; flex-shrink: 0; display: flex; gap: var(--space-1); align-items: center; }
+.tree-folder:hover .tree-actions, .tree-item.request:hover .tree-actions, .tree-item.request.selected .tree-actions { opacity: 1; }
+.btn-run-folder { padding: 2px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent-muted); color: var(--accent); cursor: pointer; font-weight: 600; }
+.btn-run-folder:hover { background: var(--accent); color: var(--bg); }
     .tree-actions button { min-height: 28px; padding: 0 var(--space-2); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8125rem; border-radius: var(--radius-sm); transition: color var(--transition), background var(--transition); }
     .tree-actions button:hover { color: var(--accent); background: var(--surface-hover); }
     .tree-actions button.danger:hover { color: var(--danger); }
@@ -961,6 +1070,9 @@
     </aside>
 
     <main class="center">
+      <div class="request-tabs-bar" id="requestTabsBar">
+        <div class="request-tabs-list" id="requestTabsList"></div>
+      </div>
       <div class="editor-bar">
         <select class="method-select" id="editorMethod">
           <option value="GET">GET</option>
@@ -974,17 +1086,14 @@
         <button type="button" class="btn-save" id="saveRequestBtn">Save</button>
         <button type="button" class="btn-ghost" id="duplicateRequestBtn" title="Duplicate this request">Duplicate</button>
       </div>
-      <div class="editor-tabs">
-        <button type="button" class="etab active" data-etab="params">Parameters</button>
-        <button type="button" class="etab" data-etab="body">Body</button>
-        <button type="button" class="etab" data-etab="headers">Headers</button>
-        <button type="button" class="etab" data-etab="auth">Authorization</button>
+      <div class="editor-tabs" role="radiogroup" aria-label="Request options">
+        <button type="button" class="etab" data-etab="params" role="radio" aria-checked="false">Parameters</button>
+        <button type="button" class="etab" data-etab="body" role="radio" aria-checked="false">Body</button>
+        <button type="button" class="etab" data-etab="headers" role="radio" aria-checked="false">Headers</button>
+        <button type="button" class="etab" data-etab="auth" role="radio" aria-checked="false">Authorization</button>
       </div>
       <div class="editor-tab-content" id="editorTabContent">
-        <table class="params-table" id="paramsTable">
-          <thead><tr><th>Key</th><th>Value</th><th>Description</th></tr></thead>
-          <tbody id="paramsBody"></tbody>
-        </table>
+        <div class="editor-tab-placeholder" id="editorTabPlaceholder">Select one: Parameters, Body, Headers or Authorization</div>
       </div>
       <div class="response-panel" id="responsePanel">
         <div class="res-head">
@@ -999,17 +1108,47 @@
           <button type="button" data-mode="multiple">Multiple</button>
           <button type="button" data-mode="regression">Regression</button>
         </span>
-        <label>Iterations</label>
+        <label title="Total runs (ignored if Run for &gt; 0)">Iterations</label>
         <input type="number" id="iterations" min="1" value="10" />
         <label>Concurrency</label>
         <input type="number" id="concurrency" min="1" value="5" />
-        <button type="button" class="btn btn-run" id="runBtn">Run test</button>
+        <label title="Run for this many seconds (0 = use Iterations)">Run for (sec)</label>
+        <input type="number" id="durationSeconds" min="0" value="0" style="width:56px;" />
+        <label title="Pause between each request (ms)">Delay (ms)</label>
+        <input type="number" id="delayBetweenMs" min="0" value="0" style="width:56px;" />
+        <span class="sla-inline" title="Pass criteria: min success rate and max p95 latency">
+          <label>SLA</label>
+          <input type="number" id="slaMinSuccessRate" min="0" max="100" value="0" placeholder="% success" style="width:52px;" title="Min success rate % (0 = off)" />
+          <input type="number" id="slaMaxP95Ms" min="0" value="0" placeholder="p95 ms" style="width:56px;" title="Max p95 latency ms (0 = off)" />
+        </span>
+        <button type="button" class="btn btn-run" id="runBtn" title="Load / stress test (iterations, concurrency)">Run test</button>
+        <button type="button" class="btn btn-run" id="runnerBtn" title="Pura collection run karo ya checkboxes se APIs select karke run karo — har request ka response dikhega">API Runner</button>
         <button type="button" class="btn btn-export" id="exportBtn" disabled>Export JSON</button>
         <button type="button" class="btn btn-export" id="exportHtmlBtn" disabled title="Download standalone HTML report">Export HTML report</button>
         <button type="button" class="btn btn-ghost" id="printReportBtn" disabled title="Print / Save as PDF">Print report</button>
         <span class="status-msg" id="statusMsg"></span>
+        <span class="load-test-hint" id="loadTestHint">Pura collection (Regression) ya checkboxes se APIs select karo → <strong>API Runner</strong> = sab run + har ka response. <strong>Run test</strong> = load test.</span>
+      </div>
+      <div class="load-test-user-data" id="loadTestUserDataWrap">
+        <div class="user-data-drop-paste" id="userDataDropPaste">
+          <textarea id="userDataPaste" class="user-data-paste" placeholder="Yahan paste karo ya file yahan drop karo — CSV ya JSON (har row / object = 1 user). Request mein <<columnName>> use karo." rows="3"></textarea>
+          <div class="user-data-actions">
+            <span class="user-data-count" id="userDataCount">0 users</span>
+            <input type="file" id="userDataFile" accept=".csv,.json,application/json,text/csv,text/plain" style="display:none;" />
+            <button type="button" class="btn btn-ghost btn-sm" id="userDataUploadBtn">Upload file</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="clearUserDataBtn">Clear</button>
+          </div>
+        </div>
       </div>
 
+      <div class="runner-output-wrap" id="runnerOutputWrap" style="display:none;">
+        <div class="runner-output-head">
+          <span class="runner-output-title">API Runner output</span>
+          <span class="runner-output-meta" id="runnerOutputMeta"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="runnerOutputClose">✕</button>
+        </div>
+        <div class="runner-output-list" id="runnerOutputList"></div>
+      </div>
       <div class="report" id="report">
         <div class="empty-state" id="emptyState">
           <p>Select an API from the right panel, set Environment (baseUrl & token) and <strong>Send</strong> or <strong>Run test</strong> for load testing.</p>
@@ -1055,6 +1194,50 @@
     const editorTabContent = document.getElementById('editorTabContent');
     const modeTabs = document.querySelectorAll('.load-test-bar .mode-tabs button');
     let currentRequestId = null;
+    let lastAuthFormData = null;
+    let openTabs = [];
+    let loadTestUserData = [];
+
+    function parseCSV(text) {
+      const lines = (text || '').trim().split(/\r?\n/).filter(Boolean);
+      if (!lines.length) return [];
+      const headers = lines[0].split(',').map((h) => h.replace(/^"|"$/g, '').trim());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
+        const values = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let j = 0; j < line.length; j++) {
+          const c = line[j];
+          if (c === '"') inQuotes = !inQuotes;
+          else if ((c === ',' && !inQuotes) || (c === '\t' && !inQuotes)) {
+            values.push(cur.trim());
+            cur = '';
+          } else cur += c;
+        }
+        values.push(cur.replace(/^"|"$/g, '').trim());
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h || 'col' + idx] = values[idx] ?? ''; });
+        rows.push(obj);
+      }
+      return rows;
+    }
+    function parseUserDataInput(text) {
+      const t = (text || '').trim();
+      if (!t) return [];
+      if (t.startsWith('[')) {
+        try {
+          const arr = JSON.parse(t);
+          return Array.isArray(arr) ? arr.map((x) => (x && typeof x === 'object' ? x : {})) : [];
+        } catch (_) { return []; }
+      }
+      return parseCSV(t);
+    }
+    function updateUserDataCount() {
+      const el = document.getElementById('userDataCount');
+      if (el) el.textContent = loadTestUserData.length + ' user(s)';
+    }
 
     function formatResponseBody(data) {
       if (data == null) return '(empty)';
@@ -1093,22 +1276,63 @@
     });
     document.querySelectorAll('.editor-tabs .etab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.editor-tabs .etab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.editor-tabs .etab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-checked', 'false'); });
         tab.classList.add('active');
+        tab.setAttribute('aria-checked', 'true');
         const name = tab.dataset.etab;
         if (name === 'params') {
-          editorTabContent.innerHTML = '<table class="params-table"><thead><tr><th>Key</th><th>Value</th><th>Description</th></tr></thead><tbody id="paramsBody"></tbody></table>';
+          editorTabContent.innerHTML = '<div class="params-table-wrap"><table class="params-table"><thead><tr><th>Key</th><th>Value</th><th>Description</th><th style="width:44px;"></th></tr></thead><tbody id="paramsBody"></tbody></table><button type="button" class="btn-add-row" id="addParamRowBtn">+ Add parameter</button></div>';
           const b = document.getElementById('paramsBody');
           if (b) renderParamsTable(b, currentRequestId);
         } else if (name === 'body') {
-          editorTabContent.innerHTML = '<textarea id="editorBody" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:JetBrains Mono,monospace;font-size:0.85rem;" placeholder="Request body (JSON or text)"></textarea>';
+          editorTabContent.innerHTML = '<div class="params-table-wrap"><div class="field" style="margin-bottom:12px;"><label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Content-Type</label><select id="bodyContentType" style="height:36px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.8125rem;"><option value="application/json">application/json</option><option value="text/plain">text/plain</option><option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option></select></div><textarea id="editorBody" style="width:100%;min-height:120px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:JetBrains Mono,monospace;font-size:0.85rem;" placeholder="Request body (JSON or text)"></textarea></div>';
           const editorBody = document.getElementById('editorBody');
+          const bodyContentType = document.getElementById('bodyContentType');
           if (editorBody) editorBody.value = getCurrentRequestBody();
+          const item = flat.find(i => i.id === currentRequestId);
+          const ct = (item && item.request && item.request.body && item.request.body.contentType) || 'application/json';
+          if (bodyContentType) bodyContentType.value = ct;
         } else if (name === 'headers') {
-          editorTabContent.innerHTML = '<table class="params-table"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody id="headersBody"></tbody></table>';
+          editorTabContent.innerHTML = '<div class="params-table-wrap"><table class="params-table"><thead><tr><th>Key</th><th>Value</th><th style="width:44px;"></th></tr></thead><tbody id="headersBody"></tbody></table><button type="button" class="btn-add-row">+ Add header</button></div>';
           const b = document.getElementById('headersBody');
           if (b) renderHeadersTable(b, currentRequestId);
-        } else if (name === 'auth') editorTabContent.innerHTML = '<p class="env-note">Use Environment token (Inherit). Set in header dropdown.</p>';
+        } else if (name === 'auth') {
+          const item = flat.find(i => i.id === currentRequestId);
+          const auth = (item && item.request && item.request.auth) ? item.request.auth : { authType: 'inherit', token: '', authActive: true, apikeyKey: '', apikeyValue: '', apikeyAddTo: 'header', basicUser: '', basicPass: '' };
+          editorTabContent.innerHTML = `<div class="auth-form params-table-wrap">
+            <div class="field"><label>Type</label><select id="authType"><option value="inherit" ${auth.authType === 'inherit' ? 'selected' : ''}>Inherit (Environment / Collection token)</option><option value="bearer" ${auth.authType === 'bearer' ? 'selected' : ''}>Bearer Token</option><option value="apikey" ${auth.authType === 'apikey' ? 'selected' : ''}>API Key</option><option value="basic" ${auth.authType === 'basic' ? 'selected' : ''}>Basic Auth</option></select></div>
+            <div class="field" id="authBearerField" style="display:${auth.authType === 'bearer' ? 'block' : 'none'}"><label>Token</label><input type="text" id="authToken" value="${escapeHtml(auth.token || '')}" placeholder="Bearer token" /></div>
+            <div class="field" id="authApiKeyField" style="display:${auth.authType === 'apikey' ? 'block' : 'none'}"><label>Key</label><input type="text" id="authApiKeyKey" value="${escapeHtml(auth.apikeyKey || '')}" placeholder="e.g. X-API-Key" /><label style="margin-top:8px;">Value</label><input type="text" id="authApiKeyValue" value="${escapeHtml(auth.apikeyValue || '')}" placeholder="API key value" /><label style="margin-top:8px;">Add to</label><select id="authApiKeyAddTo"><option value="header" ${(auth.apikeyAddTo || 'header') === 'header' ? 'selected' : ''}>Header</option><option value="query" ${auth.apikeyAddTo === 'query' ? 'selected' : ''}>Query Params</option></select></div>
+            <div class="field" id="authBasicField" style="display:${auth.authType === 'basic' ? 'block' : 'none'}"><label>Username</label><input type="text" id="authBasicUser" value="${escapeHtml(auth.basicUser || '')}" placeholder="Username" /><label style="margin-top:8px;">Password</label><input type="password" id="authBasicPass" value="${escapeHtml(auth.basicPass || '')}" placeholder="Password" /></div>
+          </div>`;
+          const authTypeEl = document.getElementById('authType');
+          const updateAuthFromForm = () => {
+            const t = authTypeEl.value;
+            lastAuthFormData = {
+              authType: t,
+              token: (document.getElementById('authToken') || {}).value || '',
+              authActive: true,
+              apikeyKey: (document.getElementById('authApiKeyKey') || {}).value || '',
+              apikeyValue: (document.getElementById('authApiKeyValue') || {}).value || '',
+              apikeyAddTo: (document.getElementById('authApiKeyAddTo') || {}).value || 'header',
+              basicUser: (document.getElementById('authBasicUser') || {}).value || '',
+              basicPass: (document.getElementById('authBasicPass') || {}).value || ''
+            };
+          };
+          authTypeEl.addEventListener('change', function() {
+            document.getElementById('authBearerField').style.display = this.value === 'bearer' ? 'block' : 'none';
+            document.getElementById('authApiKeyField').style.display = this.value === 'apikey' ? 'block' : 'none';
+            document.getElementById('authBasicField').style.display = this.value === 'basic' ? 'block' : 'none';
+            updateAuthFromForm();
+          });
+          ['authToken','authApiKeyKey','authApiKeyValue','authBasicUser','authBasicPass'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', updateAuthFromForm);
+          });
+          const authApiKeyAddToEl = document.getElementById('authApiKeyAddTo');
+          if (authApiKeyAddToEl) authApiKeyAddToEl.addEventListener('change', updateAuthFromForm);
+          updateAuthFromForm();
+        }
       });
     });
     document.getElementById('sendBtn').addEventListener('click', async () => {
@@ -1260,21 +1484,34 @@
       const text = await res.text();
       const trim = (text || '').trim();
       if (trim.startsWith('<')) {
-        throw new Error('Server returned HTML instead of JSON. Run: npm start then open http://localhost:3847');
+        showServerRequiredBanner();
+        throw new Error('Backend server not running. Run: npm start — then open http://localhost:3847');
       }
       let data;
       try {
         data = trim ? JSON.parse(text) : {};
       } catch (_) {
-        throw new Error('Invalid JSON from server. Run: npm start then open http://localhost:3847');
+        showServerRequiredBanner();
+        throw new Error('Invalid response from server. Run: npm start — then open http://localhost:3847');
       }
       return { res, data };
+    }
+    function showServerRequiredBanner() {
+      let el = document.getElementById('serverRequiredBanner');
+      if (el) return;
+      el = document.createElement('div');
+      el.id = 'serverRequiredBanner';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--warn-muted);border-bottom:2px solid var(--warn);color:var(--text);padding:12px 16px;font-size:0.9rem;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;';
+      el.innerHTML = '<strong>⚠ Collection / Request save nahi chalega:</strong> Backend server band hai. Terminal mein <code style="background:var(--surface2);padding:4px 8px;border-radius:4px;">npm start</code> chalao, phir browser mein <a href="http://localhost:3847" target="_blank" rel="noopener" style="color:var(--accent);">http://localhost:3847</a> kholo. <button type="button" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;">✕</button>';
+      el.querySelector('button').onclick = () => { el.remove(); };
+      document.body.prepend(el);
     }
 
     function loadRequestIntoEditor(flatItem) {
       if (!flatItem || !flatItem.request) return;
       const req = flatItem.request;
       currentRequestId = flatItem.id;
+      lastAuthFormData = req.auth ? { ...req.auth } : { authType: 'inherit', token: '', authActive: true, apikeyKey: '', apikeyValue: '', apikeyAddTo: 'header', basicUser: '', basicPass: '' };
       currentRequestCollectionName = flatItem.collectionName || '';
       currentCollectionIndex = flatItem.collectionIndex != null ? flatItem.collectionIndex : collections.findIndex(c => (c.name || '') === flatItem.collectionName);
       if (currentCollectionIndex < 0) currentCollectionIndex = 0;
@@ -1283,27 +1520,61 @@
       editorUrl.value = req.endpoint || '';
       const tbody = document.getElementById('paramsBody');
       if (tbody) {
-        tbody.innerHTML = (req.params || []).map(p => `
-          <tr><td><input type="text" value="${escapeHtml(p.key || '')}" readonly style="background:var(--surface);" /></td><td><input type="text" value="${escapeHtml(p.value || '')}" /></td><td><input type="text" value="${escapeHtml(p.description || '')}" placeholder="Description" /></td></tr>
-        `).join('') || '<tr><td colspan="3" style="color:var(--textMuted);">No parameters</td></tr>';
+        const params = req.params || [];
+        const rows = params.length ? params.map(p => paramRowHtml(p.key, p.value, p.description)) : [paramRowHtml('', '', '')];
+        tbody.innerHTML = rows.join('');
+        const wrap = tbody.closest('.params-table-wrap');
+        if (wrap) {
+          const addBtn = wrap.querySelector('.btn-add-row');
+          if (addBtn && !addBtn._bound) {
+            addBtn._bound = true;
+            addBtn.addEventListener('click', () => { tbody.insertAdjacentHTML('beforeend', paramRowHtml('', '', '')); });
+          }
+          tbody.querySelectorAll('.btn-row-del').forEach(btn => {
+            btn.addEventListener('click', () => { const tr = btn.closest('tr'); if (tbody.rows.length > 1) tr.remove(); });
+          });
+        }
       }
     }
+    function paramRowHtml(key, value, desc) {
+      return `<tr><td><input type="text" value="${escapeHtml(key || '')}" placeholder="Key" /></td><td><input type="text" value="${escapeHtml(value || '')}" placeholder="Value" /></td><td><input type="text" value="${escapeHtml(desc || '')}" placeholder="Description" /></td><td><button type="button" class="btn-row-del" title="Remove">⌫</button></td></tr>`;
+    }
+    function headerRowHtml(key, value) {
+      return `<tr><td><input type="text" value="${escapeHtml(key || '')}" placeholder="Key" /></td><td><input type="text" value="${escapeHtml(value || '')}" placeholder="Value" /></td><td><button type="button" class="btn-row-del" title="Remove">⌫</button></td></tr>`;
+    }
     function renderParamsTable(tbodyEl, reqId) {
-      const item = flat.find(i => i.id === reqId);
-      if (!item || !tbodyEl) return;
-      const req = item.request;
-      tbodyEl.innerHTML = (req.params || []).map(p => `
-        <tr><td><input type="text" value="${escapeHtml(p.key || '')}" /></td><td><input type="text" value="${escapeHtml(p.value || '')}" /></td><td><input type="text" value="${escapeHtml(p.description || '')}" /></td></tr>
-      `).join('') || '<tr><td colspan="3" style="color:var(--textMuted);">No parameters</td></tr>';
+      if (!tbodyEl) return;
+      const item = reqId ? flat.find(i => i.id === reqId) : null;
+      const req = item && item.request ? item.request : null;
+      const params = (req && req.params) ? req.params : [];
+      const rows = params.length ? params.map(p => paramRowHtml(p.key, p.value, p.description)) : [paramRowHtml('', '', '')];
+      tbodyEl.innerHTML = rows.join('');
+      tbodyEl.closest('.params-table-wrap')?.querySelector('.btn-add-row')?.addEventListener('click', () => {
+        tbodyEl.insertAdjacentHTML('beforeend', paramRowHtml('', '', ''));
+      });
+      tbodyEl.querySelectorAll('.btn-row-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tr = btn.closest('tr');
+          if (tbodyEl.rows.length > 1) tr.remove();
+        });
+      });
     }
     function renderHeadersTable(tbodyEl, reqId) {
-      const item = flat.find(i => i.id === reqId);
-      if (!item || !tbodyEl) return;
-      const req = item.request;
-      const headers = (req.headers || []).filter(h => h.key != null);
-      tbodyEl.innerHTML = headers.map(h => `
-        <tr><td><input type="text" value="${escapeHtml(h.key || '')}" /></td><td><input type="text" value="${escapeHtml(h.value || '')}" /></td></tr>
-      `).join('') || '<tr><td colspan="2" style="color:var(--textMuted);">No headers</td></tr>';
+      if (!tbodyEl) return;
+      const item = reqId ? flat.find(i => i.id === reqId) : null;
+      const req = item && item.request ? item.request : null;
+      const headers = (req && req.headers) ? req.headers.filter(h => h.key != null) : [];
+      const rows = headers.length ? headers.map(h => headerRowHtml(h.key, h.value)) : [headerRowHtml('', '')];
+      tbodyEl.innerHTML = rows.join('');
+      tbodyEl.closest('.params-table-wrap')?.querySelector('.btn-add-row')?.addEventListener('click', () => {
+        tbodyEl.insertAdjacentHTML('beforeend', headerRowHtml('', ''));
+      });
+      tbodyEl.querySelectorAll('.btn-row-del').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tr = btn.closest('tr');
+          if (tbodyEl.rows.length > 1) tr.remove();
+        });
+      });
     }
     function getCurrentRequestBody() {
       const item = flat.find(i => i.id === currentRequestId);
@@ -1337,8 +1608,59 @@
         }
       }
       const editorBody = document.getElementById('editorBody');
-      if (editorBody) body = { body: editorBody.value || '', contentType: (existing && existing.body && existing.body.contentType) || 'application/json' };
-      return { method, endpoint, params, headers, body, auth: (existing && existing.auth) || { token: '', authType: 'inherit', authActive: true }, name: (existing && existing.name) || 'Untitled request' };
+      const bodyContentTypeEl = document.getElementById('bodyContentType');
+      const contentType = (bodyContentTypeEl && bodyContentTypeEl.value) || (existing && existing.body && existing.body.contentType) || 'application/json';
+      if (editorBody) body = { body: editorBody.value || '', contentType };
+      const auth = (lastAuthFormData != null) ? lastAuthFormData : ((existing && existing.auth) || { token: '', authType: 'inherit', authActive: true });
+      return { method, endpoint, params, headers, body, auth, name: (existing && existing.name) || 'Untitled request' };
+    }
+
+    function renderRequestTabs() {
+      const list = document.getElementById('requestTabsList');
+      if (!list) return;
+      list.innerHTML = openTabs.map(id => {
+        const item = flat.find(i => i.id === id);
+        const name = (item && item.request && item.request.name) ? item.request.name : id;
+        const active = id === currentRequestId ? ' active' : '';
+        return `<button type="button" class="request-tab${active}" data-request-id="${escapeHtml(id)}" title="${escapeHtml(name)}"><span class="tab-label">${escapeHtml(name)}</span><span class="tab-close" aria-label="Close">×</span></button>`;
+      }).join('');
+      list.querySelectorAll('.request-tab').forEach(btn => {
+        const id = btn.getAttribute('data-request-id');
+        const isClose = (e) => e.target.classList.contains('tab-close');
+        btn.addEventListener('click', (e) => {
+          if (isClose(e)) {
+            e.stopPropagation();
+            openTabs = openTabs.filter(x => x !== id);
+            if (currentRequestId === id) {
+              currentRequestId = openTabs.length ? openTabs[openTabs.length - 1] : null;
+              if (currentRequestId) {
+                const item = flat.find(i => i.id === currentRequestId);
+                if (item) loadRequestIntoEditor(item);
+              } else {
+                editorMethod.value = 'GET';
+                editorUrl.value = '<<baseUrl>>/';
+                const tbody = document.getElementById('paramsBody');
+                if (tbody) { tbody.innerHTML = paramRowHtml('', '', ''); }
+              }
+            }
+            renderRequestTabs();
+            renderTree();
+            return;
+          }
+          currentRequestId = id;
+          const item = flat.find(i => i.id === id);
+          if (item) loadRequestIntoEditor(item);
+          renderRequestTabs();
+          renderTree();
+        });
+      });
+    }
+
+    function addRequestToTabs(id) {
+      if (!id) return;
+      if (!openTabs.includes(id)) openTabs.push(id);
+      currentRequestId = id;
+      renderRequestTabs();
     }
 
     function pathKey(path) {
@@ -1356,6 +1678,7 @@
         <div class="tree-folder" data-path="${safe}" style="padding-left: ${8 + depth * 14}px">
           <span class="chevron">▾</span>
           <span class="folder-name">${escapeHtml(name)}</span>
+          <span class="tree-actions"><button type="button" class="btn-run-folder" data-path="${safe}" title="API Runner on this folder">▶ Run</button></span>
         </div>
         <div class="tree-children">`;
       reqList.forEach(item => {
@@ -1387,7 +1710,7 @@
             <div class="tree-folder" data-path="${safe}" data-col-index="${colIndex}">
               <span class="chevron" aria-label="Expand">▾</span>
               <span class="folder-name">${escapeHtml(colPath)}</span>
-              <span class="tree-actions"><button type="button" class="btn-add-req-to-col" data-col-index="${colIndex}" data-col-path="${safe}" title="Add request to this collection">+ Request</button><button type="button" class="btn-delete-col" data-col-index="${colIndex}" title="Delete collection">⌫</button></span>
+              <span class="tree-actions"><button type="button" class="btn-run-folder" data-path="${safe}" title="API Runner on this collection">▶ Run</button><button type="button" class="btn-add-req-to-col" data-col-index="${colIndex}" data-col-path="${safe}" title="Add request to this collection">+ Request</button><button type="button" class="btn-delete-col" data-col-index="${colIndex}" title="Delete collection">⌫</button></span>
             </div>
             <div class="tree-children">`;
           colReqList.forEach(item => {
@@ -1423,6 +1746,7 @@
             <div class="tree-folder" data-path="${pathSafe}">
               <span class="chevron">▾</span>
               <span class="folder-name">${escapeHtml(label)}</span>
+              <span class="tree-actions"><button type="button" class="btn-run-folder" data-path="${pathSafe}" title="API Runner here">▶ Run</button></span>
             </div>
             <div class="tree-children">`;
           reqs.forEach(r => {
@@ -1455,6 +1779,16 @@
         });
       });
 
+      treeEl.querySelectorAll('.btn-run-folder').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const path = btn.getAttribute('data-path');
+          const ids = getRequestIdsForPath(path);
+          runApiRunnerWithIds(ids);
+        });
+      });
+
       treeEl.querySelectorAll('.btn-add-req-to-col').forEach(btn => {
         btn.addEventListener('click', async (e) => { e.stopPropagation(); e.preventDefault();
           const colIdx = btn.getAttribute('data-col-index');
@@ -1473,9 +1807,10 @@
             expandedPaths.add(col.name || colPath || '');
             if (newId) {
               const item = flat.find(i => i.id === newId);
-              if (item) { selectedIds.add(newId); loadRequestIntoEditor(item); }
+              if (item) { selectedIds.add(newId); addRequestToTabs(newId); loadRequestIntoEditor(item); }
             }
-            renderTree(); renderCollectionVars();
+            renderTree();
+            renderRequestTabs(); renderCollectionVars();
             setStatus('Request added to ' + (col.name || 'collection'), 'success');
           } catch (err) { setStatus(err.message, 'error'); }
         });
@@ -1494,12 +1829,95 @@
             selectedIds.add(id);
             treeEl.querySelectorAll('.tree-item.request').forEach(r => r.classList.remove('selected'));
             el.classList.add('selected');
+            addRequestToTabs(id);
             const flatItem = flat.find(i => i.id === id);
             if (flatItem) loadRequestIntoEditor(flatItem);
           } else if (mode === 'multiple') {
             const cb = el.querySelector('input[type="checkbox"]');
             if (cb) { cb.checked = !cb.checked; if (cb.checked) selectedIds.add(id); else selectedIds.delete(id); }
           }
+        });
+      });
+
+      treeEl.querySelectorAll('.tree-folder[data-col-index] .folder-name').forEach(span => {
+        span.classList.add('editable');
+        span.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          const folder = span.closest('.tree-folder');
+          const colIndex = folder.getAttribute('data-col-index');
+          if (colIndex == null) return;
+          const col = collections[parseInt(colIndex, 10)];
+          if (!col) return;
+          const currentName = (col.name || '').trim() || 'Collection';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'inline-edit';
+          input.value = currentName;
+          input.setAttribute('data-col-index', colIndex);
+          span.textContent = '';
+          span.appendChild(input);
+          input.focus();
+          input.select();
+          const save = async () => {
+            const newName = (input.value || '').trim() || currentName;
+            input.remove();
+            span.textContent = newName;
+            try {
+              const { res, data } = await fetchJson(`/api/collections/${colIndex}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) });
+              if (!res.ok) throw new Error(data.error || 'Rename failed');
+              collections = data.collections || [];
+              flat = data.flat || [];
+              expandedPaths.add(newName);
+              expandedPaths.delete(col.name);
+              renderTree();
+              renderRequestTabs();
+              renderCollectionVars();
+              setStatus('Collection renamed', 'success');
+            } catch (err) { setStatus(err.message, 'error'); span.textContent = currentName; }
+          };
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } });
+        });
+      });
+
+      treeEl.querySelectorAll('.tree-item.request .req-name').forEach(span => {
+        span.classList.add('editable');
+        span.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          const row = span.closest('.tree-item.request');
+          const id = row.getAttribute('data-id');
+          if (!id) return;
+          const item = flat.find(i => i.id === id);
+          if (!item || !item.request) return;
+          const currentName = (item.request.name || '').trim() || 'Untitled request';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'inline-edit';
+          input.value = currentName;
+          input.setAttribute('data-request-id', id);
+          span.textContent = '';
+          span.appendChild(input);
+          input.focus();
+          input.select();
+          const save = async () => {
+            const newName = (input.value || '').trim() || currentName;
+            input.remove();
+            span.textContent = newName;
+            try {
+              const payload = getRequestFromEditor();
+              if (currentRequestId === id) payload.name = newName;
+              else payload.name = newName;
+              const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: { name: newName } }) });
+              if (!res.ok) throw new Error(data.error || 'Rename failed');
+              flat = data.flat || [];
+              collections = data.collections || [];
+              renderTree();
+              renderRequestTabs();
+              setStatus('Request renamed', 'success');
+            } catch (err) { setStatus(err.message, 'error'); span.textContent = currentName; }
+          };
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } });
         });
       });
 
@@ -1513,7 +1931,10 @@
             const { res, data } = await fetchJson(`/api/collections/${idx}`, { method: 'DELETE' });
             if (!res.ok) throw new Error(data.error || 'Delete failed');
             flat = data.flat || []; collections = data.collections || [];
-            currentRequestId = null; renderTree(); renderCollectionVars();
+            openTabs = openTabs.filter(x => flat.some(i => i.id === x));
+            currentRequestId = openTabs.length ? openTabs[openTabs.length - 1] : null;
+            if (currentRequestId) { const item = flat.find(i => i.id === currentRequestId); if (item) loadRequestIntoEditor(item); }
+            renderTree(); renderRequestTabs(); renderCollectionVars();
             setStatus('Collection deleted', 'success');
           } catch (err) { setStatus(err.message, 'error'); }
         });
@@ -1521,13 +1942,19 @@
       treeEl.querySelectorAll('.btn-delete-req').forEach(btn => {
         btn.addEventListener('click', async (e) => { e.stopPropagation(); e.preventDefault();
           const id = btn.getAttribute('data-id');
-          if (!id || !confirm('Delete this request?')) return;
+            if (!id || !confirm('Delete this request?')) return;
           try {
             const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(id)}`, { method: 'DELETE' });
             if (!res.ok) throw new Error(data.error || 'Delete failed');
             flat = data.flat || []; collections = data.collections || [];
-            if (currentRequestId === id) currentRequestId = null;
-            selectedIds.delete(id); renderTree();
+            openTabs = openTabs.filter(x => x !== id);
+            if (currentRequestId === id) {
+              currentRequestId = openTabs.length ? openTabs[openTabs.length - 1] : null;
+              if (currentRequestId) { const item = flat.find(i => i.id === currentRequestId); if (item) loadRequestIntoEditor(item); }
+            }
+            selectedIds.delete(id);
+            renderTree();
+            renderRequestTabs();
             setStatus('Request deleted', 'success');
           } catch (err) { setStatus(err.message, 'error'); }
         });
@@ -1541,8 +1968,9 @@
             if (!res.ok) throw new Error(data.error || 'Duplicate failed');
             flat = data.flat || []; collections = data.collections || [];
             const newId = data.id;
-            if (newId) { selectedIds.add(newId); expandedPaths.add(flat.find(i => i.id === newId)?.path || ''); }
+            if (newId) { selectedIds.add(newId); addRequestToTabs(newId); expandedPaths.add(flat.find(i => i.id === newId)?.path || ''); }
             renderTree();
+            renderRequestTabs();
             const flatItem = flat.find(i => i.id === newId);
             if (flatItem) loadRequestIntoEditor(flatItem);
             setStatus('Request duplicated', 'success');
@@ -1589,7 +2017,8 @@
         }
         setStatus(`Loaded ${flat.length} APIs`);
       } catch (e) {
-        setStatus('Error: ' + e.message + ' – Start server (npm start) and open http://localhost:3847', 'error');
+        if (typeof showServerRequiredBanner === 'function') showServerRequiredBanner();
+        setStatus('Error: ' + e.message, 'error');
         flat = [];
         collections = [];
         loadSavedPrefs();
@@ -1680,7 +2109,10 @@
             fetchJson('/api/collections/' + idx, { method: 'DELETE' }).then(({ res, data }) => {
               if (!res.ok) throw new Error(data.error || 'Delete failed');
               flat = data.flat || []; collections = data.collections || [];
-              currentRequestId = null; renderTree(); renderCollectionVars();
+              openTabs = openTabs.filter(x => flat.some(i => i.id === x));
+              currentRequestId = openTabs.length ? openTabs[openTabs.length - 1] : null;
+              if (currentRequestId) { const item = flat.find(i => i.id === currentRequestId); if (item) loadRequestIntoEditor(item); }
+              renderTree(); renderRequestTabs(); renderCollectionVars();
               setStatus('Collection deleted', 'success');
             }).catch(err => setStatus(err.message, 'error'));
           } else if (btn.dataset.action === 'add') {
@@ -1691,8 +2123,8 @@
               flat = data.flat || []; collections = data.collections || [];
               const newId = data.id;
               expandedPaths.add(col.name || colPath || '');
-              if (newId) { const item = flat.find(i => i.id === newId); if (item) { selectedIds.add(newId); loadRequestIntoEditor(item); } }
-              renderTree(); renderCollectionVars();
+              if (newId) { const item = flat.find(i => i.id === newId); if (item) { selectedIds.add(newId); addRequestToTabs(newId); loadRequestIntoEditor(item); } }
+              renderTree(); renderRequestTabs(); renderCollectionVars();
               setStatus('Request added', 'success');
             }).catch(err => setStatus(err.message, 'error'));
           }
@@ -1718,13 +2150,24 @@
 
     document.getElementById('newRequestBtn').addEventListener('click', () => {
       currentRequestId = null;
+      lastAuthFormData = { authType: 'inherit', token: '', authActive: true, apikeyKey: '', apikeyValue: '', apikeyAddTo: 'header', basicUser: '', basicPass: '' };
       if (currentCollectionIndex < 0 || currentCollectionIndex >= collections.length) currentCollectionIndex = collections.length ? 0 : 0;
       currentFolderIndex = null;
       currentRequestCollectionName = collections[currentCollectionIndex] ? (collections[currentCollectionIndex].name || '') : '';
       editorMethod.value = 'GET';
       editorUrl.value = '<<baseUrl>>/';
       const tbody = document.getElementById('paramsBody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="color:var(--textMuted);">No parameters</td></tr>';
+      if (tbody) {
+        tbody.innerHTML = paramRowHtml('', '', '');
+        const wrap = tbody.closest('.params-table-wrap');
+        if (wrap) {
+          const addBtn = wrap.querySelector('.btn-add-row');
+          if (addBtn && !addBtn._bound) {
+            addBtn._bound = true;
+            addBtn.addEventListener('click', () => { tbody.insertAdjacentHTML('beforeend', paramRowHtml('', '', '')); });
+          }
+        }
+      }
       setStatus('New request – edit and click Save to add to ' + (currentRequestCollectionName || 'collection'));
     });
 
@@ -1744,8 +2187,8 @@
           if (!res.ok) throw new Error(data.error || 'Add failed');
           flat = data.flat || []; collections = data.collections || [];
           const newId = data.id;
-          if (newId) { currentRequestId = newId; const item = flat.find(i => i.id === newId); if (item) loadRequestIntoEditor(item); expandedPaths.add(currentRequestCollectionName || (collections[colIdx] && collections[colIdx].name) || ''); }
-          renderTree(); renderCollectionVars();
+          if (newId) { currentRequestId = newId; addRequestToTabs(newId); const item = flat.find(i => i.id === newId); if (item) loadRequestIntoEditor(item); expandedPaths.add(currentRequestCollectionName || (collections[colIdx] && collections[colIdx].name) || ''); }
+          renderTree(); renderRequestTabs(); renderCollectionVars();
           setStatus('Request added', 'success');
         }
       } catch (err) { setStatus(err.message, 'error'); }
@@ -1758,8 +2201,9 @@
         if (!res.ok) throw new Error(data.error || 'Duplicate failed');
         flat = data.flat || []; collections = data.collections || [];
         const newId = data.id;
-        if (newId) { selectedIds.add(newId); const item = flat.find(i => i.id === newId); if (item) { expandedPaths.add(item.path); loadRequestIntoEditor(item); } }
+        if (newId) { selectedIds.add(newId); addRequestToTabs(newId); const item = flat.find(i => i.id === newId); if (item) { expandedPaths.add(item.path); loadRequestIntoEditor(item); } }
         renderTree();
+        renderRequestTabs();
         setStatus('Request duplicated', 'success');
       } catch (err) { setStatus(err.message, 'error'); }
     });
@@ -1802,6 +2246,79 @@
       if (mode === 'regression') return flat.map(r => r.id);
       return [...selectedIds];
     }
+    function getRequestIdsForPath(path) {
+      if (!path) return [];
+      const p = String(path).replace(/&quot;/g, '"');
+      if (p.indexOf(' > ') >= 0) return flat.filter((i) => i.path === p).map((i) => i.id);
+      return flat.filter((i) => i.path === p || i.path.startsWith(p + ' > ')).map((i) => i.id);
+    }
+    async function runApiRunnerWithIds(ids) {
+      if (!ids || !ids.length) {
+        setStatus('No APIs in this collection/folder', 'error');
+        return;
+      }
+      const collVars = getCollectionVariables();
+      const baseUrl = (baseUrlEl.value || '').trim();
+      const needsBase = ids.some((id) => (flat.find((r) => r.id === id)?.request?.endpoint || '').includes('<<baseUrl>>'));
+      if (needsBase && !baseUrl && !Object.values(collVars).some((c) => (c.baseUrl || '').trim())) {
+        setStatus('Set baseUrl in Environment or Collection', 'error');
+        return;
+      }
+      const wrap = document.getElementById('runnerOutputWrap');
+      const listEl = document.getElementById('runnerOutputList');
+      const metaEl = document.getElementById('runnerOutputMeta');
+      wrap.style.display = 'flex';
+      listEl.innerHTML = '';
+      metaEl.textContent = 'Running ' + ids.length + ' request(s)…';
+      const runnerBtn = document.getElementById('runnerBtn');
+      if (runnerBtn) runnerBtn.disabled = true;
+      const results = [];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        const item = flat.find((r) => r.id === id);
+        const name = (item && item.request && item.request.name) ? item.request.name : id;
+        const method = (item && item.request && item.request.method) ? (item.request.method || 'GET').toUpperCase() : 'GET';
+        metaEl.textContent = 'Running ' + (i + 1) + '/' + ids.length + ': ' + name;
+        try {
+          const { res, data: result } = await fetchJson('/api/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requestId: id,
+              baseUrl,
+              bearerToken: bearerTokenEl.value.trim() || undefined,
+              collectionVariables: collVars,
+            }),
+          });
+          const statusCode = result.statusCode != null ? result.statusCode : (res.ok ? 200 : 0);
+          const success = result.success !== false && statusCode >= 200 && statusCode < 300;
+          const bodyText = result.error || formatResponseBody(result.data);
+          results.push({ id, name, method, statusCode, success, duration: result.duration || 0, body: bodyText });
+        } catch (e) {
+          results.push({ id, name, method, statusCode: 0, success: false, duration: 0, body: e.message || 'Request failed' });
+        }
+        const last = results[results.length - 1];
+        const itemEl = document.createElement('div');
+        itemEl.className = 'runner-item';
+        itemEl.innerHTML = `
+          <div class="runner-item-head">
+            <span class="method ${last.method}">${escapeHtml(last.method)}</span>
+            <span class="name" title="${escapeHtml(last.name)}">${escapeHtml(last.name)}</span>
+            <span class="status ${last.success ? 'ok' : 'err'}">${last.statusCode} ${last.success ? 'OK' : 'Error'}</span>
+            <span class="time">${last.duration} ms</span>
+            <span class="chevron">▸</span>
+          </div>
+          <div class="runner-item-body"><pre>${escapeHtml(last.body)}</pre></div>
+        `;
+        itemEl.querySelector('.runner-item-head').addEventListener('click', () => itemEl.classList.toggle('expanded'));
+        listEl.appendChild(itemEl);
+      }
+      const total = results.length;
+      const passed = results.filter((r) => r.success).length;
+      metaEl.textContent = total + ' request(s) run — ' + passed + ' passed, ' + (total - passed) + ' failed';
+      if (runnerBtn) runnerBtn.disabled = false;
+      setStatus('API Runner finished: ' + passed + '/' + total + ' passed', passed === total ? 'success' : 'error');
+    }
 
     runBtn.addEventListener('click', async () => {
       const ids = getRequestIds();
@@ -1821,6 +2338,10 @@
       runBtn.classList.add('running');
       setStatus('Running…');
       try {
+        const durationSec = parseInt(document.getElementById('durationSeconds')?.value, 10) || 0;
+        const delayMs = Math.max(0, parseInt(document.getElementById('delayBetweenMs')?.value, 10) || 0);
+        const slaMin = Math.min(100, Math.max(0, parseFloat(document.getElementById('slaMinSuccessRate')?.value) || 0));
+        const slaP95 = Math.max(0, parseInt(document.getElementById('slaMaxP95Ms')?.value, 10) || 0);
         const { res, data: report } = await fetchJson('/api/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1830,8 +2351,12 @@
             baseUrl,
             bearerToken: bearerTokenEl.value.trim() || undefined,
             collectionVariables: getCollectionVariables(),
-            iterations: Math.max(1, parseInt(iterationsEl.value, 10) || 1),
+            iterations: durationSec > 0 ? 1 : Math.max(1, parseInt(iterationsEl.value, 10) || 1),
             concurrency: Math.max(1, parseInt(concurrencyEl.value, 10) || 1),
+            durationSeconds: durationSec > 0 ? durationSec : 0,
+            delayBetweenRequestsMs: delayMs,
+            sla: (slaMin > 0 || slaP95 > 0) ? { minSuccessRate: slaMin, maxP95Ms: slaP95 } : {},
+            userData: loadTestUserData.length ? loadTestUserData : undefined,
             globalVariables: {},
           }),
         });
@@ -1851,6 +2376,62 @@
         runBtn.classList.remove('running');
       }
     });
+
+    document.getElementById('runnerBtn').addEventListener('click', async () => {
+      const ids = getRequestIds();
+      if (mode !== 'regression' && !ids.length) {
+        setStatus('Select at least one API for API Runner, or use Regression for full collection', 'error');
+        return;
+      }
+      runApiRunnerWithIds(ids);
+    });
+
+    document.getElementById('runnerOutputClose').addEventListener('click', () => {
+      document.getElementById('runnerOutputWrap').style.display = 'none';
+    });
+
+    (function initUserData() {
+      const dropZone = document.getElementById('userDataDropPaste');
+      const fileEl = document.getElementById('userDataFile');
+      const pasteEl = document.getElementById('userDataPaste');
+      const clearBtn = document.getElementById('clearUserDataBtn');
+      const uploadBtn = document.getElementById('userDataUploadBtn');
+
+      function applyUserData(text) {
+        loadTestUserData = parseUserDataInput(text);
+        if (pasteEl) pasteEl.value = text;
+        updateUserDataCount();
+        if (loadTestUserData.length) setStatus(loadTestUserData.length + ' users loaded — ab Run test chalao', 'success');
+      }
+
+      if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('drag-over');
+          const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (!file) return;
+          const r = new FileReader();
+          r.onload = () => { applyUserData(r.result); setStatus('File loaded: ' + loadTestUserData.length + ' users', 'success'); };
+          r.onerror = () => setStatus('File read error', 'error');
+          r.readAsText(file);
+        });
+      }
+      if (uploadBtn && fileEl) uploadBtn.addEventListener('click', () => fileEl.click());
+      if (fileEl) fileEl.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(file); });
+          applyUserData(text);
+        } catch (err) { setStatus('File error: ' + err.message, 'error'); }
+        e.target.value = '';
+      });
+      if (pasteEl) pasteEl.addEventListener('input', () => { loadTestUserData = parseUserDataInput(pasteEl.value); updateUserDataCount(); });
+      if (pasteEl) pasteEl.addEventListener('blur', () => { loadTestUserData = parseUserDataInput(pasteEl.value); updateUserDataCount(); });
+      if (clearBtn) clearBtn.addEventListener('click', () => { loadTestUserData = []; if (pasteEl) pasteEl.value = ''; updateUserDataCount(); setStatus('User data cleared'); });
+    })();
 
     function renderReport(report) {
       emptyState.style.display = 'none';
@@ -1889,13 +2470,31 @@
         findings.push(`Throughput: ${s.throughputPerSec ?? 0} requests/second.`);
       }
       const findingsHtml = findings.length ? `<ul>${findings.map((f, i) => `<li class="${i === 0 && failCount > 0 ? 'fail' : ''}">${escapeHtml(f)}</li>`).join('')}</ul>` : '<p style="color:var(--textMuted);font-size:0.9rem;">No data.</p>';
+      const reportMetaParts = [(report.type || 'single'), (report.durationSeconds ? report.durationSeconds + 's run' : (report.iterations ?? 1) + ' iteration(s)'), 'Concurrency ' + (report.concurrency ?? 1)];
+      if (report.delayBetweenRequestsMs) reportMetaParts.push('Delay ' + report.delayBetweenRequestsMs + 'ms');
+      const slaBadge = report.sla && typeof report.sla.pass === 'boolean'
+        ? `<span class="sla-badge ${report.sla.pass ? 'pass' : 'fail'}" title="SLA: ${report.sla.minSuccessRate ? 'Success rate ≥ ' + report.sla.minSuccessRate + '%' : ''} ${report.sla.maxP95Ms ? 'p95 ≤ ' + report.sla.maxP95Ms + 'ms' : ''}">SLA ${report.sla.pass ? 'PASS' : 'FAIL'}</span>`
+        : '';
+      const configDl = [
+        ['Run at', runDate],
+        ['Mode', (report.type || 'single')],
+        ['Iterations', report.durationSeconds ? '–' : (report.iterations ?? 1)],
+        ['Concurrency', report.concurrency ?? 1],
+        ...(report.durationSeconds ? [['Run for', report.durationSeconds + 's']] : []),
+        ...(report.delayBetweenRequestsMs ? [['Delay between requests', report.delayBetweenRequestsMs + 'ms']] : []),
+        ['Total requests', report.totalCalls ?? 0],
+        ['Total duration', (report.totalTime / 1000).toFixed(2) + 's'],
+        ...(report.sla && (report.sla.minSuccessRate > 0 || report.sla.maxP95Ms > 0) ? [
+          ['SLA result', (report.sla.pass ? 'PASS' : 'FAIL') + (report.sla.actualSuccessRate != null ? ' (success ' + report.sla.actualSuccessRate + '%, p95 ' + (report.sla.actualP95Ms ?? '–') + 'ms)' : '')],
+        ] : []),
+      ];
       let html = `
         <div class="report-cover">
           <div class="report-product">PostMeter</div>
           <div class="report-doc-title">API Load Test Report</div>
           <div class="report-doc-sub">Performance &amp; reliability assessment</div>
           <div class="report-date">${runDate}</div>
-          <div class="report-meta" style="margin-top:12px;">${(report.type || 'single')} · ${report.iterations ?? 1} iteration(s) · Concurrency ${report.concurrency ?? 1}</div>
+          <div class="report-meta" style="margin-top:12px;">${reportMetaParts.join(' · ')} ${slaBadge}</div>
         </div>
         <div class="report-section">
           <div class="executive-summary">
@@ -1908,12 +2507,7 @@
             <div class="report-config">
               <h4>Test configuration</h4>
               <dl>
-                <dt>Run at</dt><dd>${runDate}</dd>
-                <dt>Mode</dt><dd>${(report.type || 'single')}</dd>
-                <dt>Iterations</dt><dd>${report.iterations ?? 1}</dd>
-                <dt>Concurrency</dt><dd>${report.concurrency ?? 1}</dd>
-                <dt>Total requests</dt><dd>${report.totalCalls ?? 0}</dd>
-                <dt>Total duration</dt><dd>${(report.totalTime / 1000).toFixed(2)}s</dd>
+                ${configDl.map(([dt, dd]) => `<dt>${escapeHtml(dt)}</dt><dd>${escapeHtml(String(dd))}</dd>`).join('')}
               </dl>
             </div>
             <div class="report-findings">
