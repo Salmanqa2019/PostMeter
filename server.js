@@ -202,21 +202,43 @@ function flattenRequests(collections) {
   return list;
 }
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function substituteVariables(str, vars) {
+  if (str == null || typeof str !== 'string') return str;
+  let out = str;
+  Object.entries(vars || {}).forEach(([k, v]) => {
+    if (k == null) return;
+    out = out.replace(new RegExp('<<' + escapeRegex(k) + '>>', 'gi'), String(v ?? ''));
+  });
+  return out;
+}
+
 function resolveUrl(endpoint, baseUrl, requestVariables = []) {
   let url = (endpoint || '').replace(/<<baseUrl>>/g, (baseUrl || '').trim());
   (requestVariables || []).filter(v => v && v.active).forEach(v => {
     const key = v.key;
-    if (key) url = url.replace(new RegExp(`<<${key}>>`, 'g'), (v.value || '').trim());
+    if (key) url = url.replace(new RegExp(`<<${escapeRegex(key)}>>`, 'gi'), (v.value || '').trim());
   });
   return url;
 }
 
-function buildRequestOptions(req, baseUrl, globalVariables = {}) {
+function buildRequestOptions(req, baseUrl, globalVariables = {}, perRequestVars = {}) {
   const endpoint = req.endpoint || '';
-  const vars = [...(req.requestVariables || []), ...Object.entries(globalVariables).map(([k, v]) => ({ key: k, value: String(v), active: true }))];
+  const mergedVars = { ...globalVariables, ...perRequestVars };
+  const vars = [
+    ...(req.requestVariables || []),
+    ...Object.entries(mergedVars).map(([k, v]) => ({ key: k, value: String(v), active: true })),
+  ];
   let url = resolveUrl(endpoint, baseUrl, vars);
-  const params = (req.params || []).filter(p => p.active && p.key).reduce((acc, p) => { acc[p.key] = p.value; return acc; }, {});
-  const headers = (req.headers || []).filter(h => h.key && h.active !== false).reduce((acc, h) => { acc[h.key] = h.value; return acc; }, {});
+  let params = (req.params || []).filter(p => p.active && p.key).reduce((acc, p) => { acc[p.key] = p.value; return acc; }, {});
+  let headers = (req.headers || []).filter(h => h.key && h.active !== false).reduce((acc, h) => { acc[h.key] = h.value; return acc; }, {});
+  url = substituteVariables(url, perRequestVars);
+  Object.keys(params).forEach((k) => { params[k] = substituteVariables(params[k], perRequestVars); });
+  Object.keys(headers).forEach((k) => { headers[k] = substituteVariables(headers[k], perRequestVars); });
+
   let data = null;
   if (req.body && req.body.body != null) {
     try {
@@ -224,6 +246,7 @@ function buildRequestOptions(req, baseUrl, globalVariables = {}) {
     } catch (_) {
       data = req.body.body;
     }
+    data = substituteVariables(data, perRequestVars);
     const contentType = (req.body && req.body.contentType) || 'application/json';
     if (contentType && !headers['Content-Type'] && !headers['content-type']) {
       headers['Content-Type'] = contentType;
@@ -231,13 +254,20 @@ function buildRequestOptions(req, baseUrl, globalVariables = {}) {
   }
   const auth = req.auth || {};
   const useInherit = auth.authType === 'inherit';
-  const token = useInherit
-    ? (globalVariables.bearerToken || auth.token)
-    : (auth.token || globalVariables.bearerToken);
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  } else if (auth.authActive && auth.authType === 'bearer' && auth.token) {
-    headers['Authorization'] = `Bearer ${auth.token}`;
+  const token = (perRequestVars.token || perRequestVars.bearerToken) || (useInherit ? (globalVariables.bearerToken || auth.token) : (auth.token || globalVariables.bearerToken));
+  if (auth.authType === 'bearer' || useInherit) {
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  } else if (auth.authType === 'apikey' && auth.apikeyKey) {
+    const key = auth.apikeyKey.trim();
+    const value = substituteVariables((auth.apikeyValue || '').trim(), perRequestVars) || (auth.apikeyValue || '').trim();
+    const addTo = (auth.apikeyAddTo || 'header').toLowerCase();
+    if (addTo === 'header' && value) headers[key] = value;
+    else if (addTo === 'query' && value) params[key] = value;
+  } else if (auth.authType === 'basic' && (auth.basicUser != null || auth.basicPass != null)) {
+    const user = substituteVariables((auth.basicUser || '').trim(), perRequestVars) || (auth.basicUser || '').trim();
+    const pass = substituteVariables((auth.basicPass || '').trim(), perRequestVars) || (auth.basicPass || '').trim();
+    const val = Buffer.from(user + ':' + pass, 'utf8').toString('base64');
+    headers['Authorization'] = 'Basic ' + val;
   }
   return { url, params, headers, data, method: (req.method || 'GET').toUpperCase() };
 }
@@ -295,7 +325,7 @@ async function sendOneRequest(axiosConfig) {
   }
 }
 
-function runWithConcurrency(tasks, concurrency) {
+function runWithConcurrency(tasks, concurrency, delayBetweenMs = 0) {
   return new Promise((resolve) => {
     const results = [];
     let index = 0;
@@ -308,11 +338,62 @@ function runWithConcurrency(tasks, concurrency) {
       const i = index++;
       const task = tasks[i];
       task()
-        .then((r) => { results[i] = r; runNext(); })
-        .catch((e) => { results[i] = { duration: 0, statusCode: 0, success: false, error: e.message }; runNext(); });
+        .then((r) => {
+          results[i] = r;
+          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+        })
+        .then(() => runNext())
+        .catch((e) => {
+          results[i] = { duration: 0, statusCode: 0, success: false, error: e.message };
+          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+        })
+        .then(() => runNext());
     }
 
     for (let c = 0; c < Math.min(concurrency, tasks.length); c++) runNext();
+  });
+}
+
+function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBetweenMs) {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const results = [];
+    let running = 0;
+    let index = 0;
+    let taskIndex = 0;
+
+    function runOne() {
+      if (Date.now() - startTime >= durationMs) {
+        running--;
+        if (running === 0) resolve(results);
+        return;
+      }
+      const item = toRun[index % toRun.length];
+      index++;
+      const currentTaskIndex = taskIndex++;
+      const opts = getOptsForItem(item, currentTaskIndex);
+      runSingleRequest(opts)
+        .then((r) => {
+          results.push({ ...r, name: item.request?.name, path: item.path, id: item.id });
+          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+        })
+        .catch((e) => {
+          results.push({ duration: 0, statusCode: 0, success: false, error: e.message, name: item.request?.name, path: item.path, id: item.id });
+          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+        })
+        .then(() => {
+          running--;
+          runNext();
+        });
+      running++;
+    }
+
+    function runNext() {
+      while (running < concurrency && Date.now() - startTime < durationMs) runOne();
+      if (running === 0) resolve(results);
+    }
+
+    runNext();
   });
 }
 
@@ -443,10 +524,28 @@ app.post('/api/send', async (req, res) => {
 // POST run test (single / multiple / regression)
 app.post('/api/run', async (req, res) => {
   try {
-    const { type, requestIds, baseUrl, iterations = 1, concurrency = 1, globalVariables = {}, bearerToken, collectionVariables: cv } = req.body;
+    const {
+      type,
+      requestIds,
+      baseUrl,
+      iterations = 1,
+      concurrency = 1,
+      durationSeconds = 0,
+      delayBetweenRequestsMs = 0,
+      sla = {},
+      globalVariables = {},
+      bearerToken,
+      collectionVariables: cv,
+      userData = [],
+    } = req.body;
     const collectionVariables = cv && typeof cv === 'object' ? cv : {};
     const gv = { ...globalVariables };
     if (bearerToken) gv.bearerToken = bearerToken;
+    const users = Array.isArray(userData) ? userData.filter((u) => u && typeof u === 'object') : [];
+    const durationMs = Math.max(0, parseInt(durationSeconds, 10) || 0) * 1000;
+    const delayMs = Math.max(0, parseInt(delayBetweenRequestsMs, 10) || 0);
+    const minSuccessRate = Math.min(100, Math.max(0, parseFloat(sla.minSuccessRate) || 0));
+    const maxP95Ms = Math.max(0, parseInt(sla.maxP95Ms, 10) || 0);
     const filePath = getCollectionsPath();
     let raw;
     try {
@@ -489,18 +588,34 @@ app.post('/api/run', async (req, res) => {
     }
 
     const startTime = Date.now();
-    const allTasks = [];
-    for (let i = 0; i < iterations; i++) {
-      for (const item of toRun) {
+    const concurrencyNum = Math.max(1, parseInt(concurrency, 10) || 1);
+
+    let results;
+    let taskIndex = 0;
+    const getPerRequestVars = () => (users.length ? users[taskIndex++ % users.length] : {});
+
+    if (durationMs > 0) {
+      const getOpts = (item, index) => {
+        const perRequest = users.length ? users[index % users.length] : {};
         const { baseUrl: resolvedBase, token } = resolveForRequest(item, base, gv.bearerToken, collectionVariables);
         const reqGv = { ...gv, bearerToken: token };
-        const opts = buildRequestOptions(item.request, resolvedBase, reqGv);
-        allTasks.push(() => runSingleRequest(opts).then(r => ({ ...r, name: item.request.name, path: item.path, id: item.id })));
+        return buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
+      };
+      results = await runWithDuration(toRun, getOpts, durationMs, concurrencyNum, delayMs);
+    } else {
+      const allTasks = [];
+      for (let i = 0; i < iterations; i++) {
+        for (const item of toRun) {
+          const perRequest = getPerRequestVars();
+          const { baseUrl: resolvedBase, token } = resolveForRequest(item, base, gv.bearerToken, collectionVariables);
+          const reqGv = { ...gv, bearerToken: token };
+          const opts = buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
+          allTasks.push(() => runSingleRequest(opts).then(r => ({ ...r, name: item.request.name, path: item.path, id: item.id })));
+        }
       }
+      results = await runWithConcurrency(allTasks, concurrencyNum, delayMs);
     }
 
-    const concurrencyNum = Math.max(1, parseInt(concurrency, 10) || 1);
-    const results = await runWithConcurrency(allTasks, concurrencyNum);
     const totalTime = Date.now() - startTime;
 
     const byRequest = {};
@@ -536,6 +651,19 @@ app.post('/api/run', async (req, res) => {
     const allStats = computeStats(results);
     report.summary = allStats;
     report.summary.throughputPerSec = totalTime > 0 ? (results.length / (totalTime / 1000)).toFixed(2) : 0;
+
+    report.durationSeconds = durationMs > 0 ? durationMs / 1000 : null;
+    report.delayBetweenRequestsMs = delayMs > 0 ? delayMs : null;
+    report.sla = { minSuccessRate: minSuccessRate || null, maxP95Ms: maxP95Ms || null };
+    if (minSuccessRate > 0 || maxP95Ms > 0) {
+      const actualRate = results.length ? (results.filter((r) => r && r.success).length / results.length) * 100 : 0;
+      const p95 = (allStats.duration && allStats.duration.p95) != null ? allStats.duration.p95 : 0;
+      const passRate = minSuccessRate <= 0 || actualRate >= minSuccessRate;
+      const passP95 = maxP95Ms <= 0 || p95 <= maxP95Ms;
+      report.sla.actualSuccessRate = Math.round(actualRate * 100) / 100;
+      report.sla.actualP95Ms = p95;
+      report.sla.pass = passRate && passP95;
+    }
 
     res.json(report);
   } catch (err) {
@@ -621,6 +749,25 @@ app.post('/api/collections', (req, res) => {
     };
     data.push(newCol);
     fs.writeFileSync(fs.existsSync(filePath) ? filePath : COLLECTIONS_PATH, JSON.stringify(data, null, 2), 'utf8');
+    const flat = flattenRequests(data);
+    res.json({ ok: true, collections: data, flat });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update collection (e.g. rename)
+app.patch('/api/collections/:index', (req, res) => {
+  try {
+    const filePath = getCollectionsPath();
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
+    let data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!Array.isArray(data)) data = [];
+    const index = parseInt(req.params.index, 10);
+    if (isNaN(index) || index < 0 || index >= data.length) return res.status(400).json({ error: 'Invalid collection index' });
+    const col = data[index];
+    if (req.body && req.body.name != null) col.name = String(req.body.name).trim() || col.name || 'Collection';
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
