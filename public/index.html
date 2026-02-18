@@ -577,6 +577,13 @@
     .tree-item.request { font-weight: 400; color: var(--text-secondary); }
     .tree-item.request.selected { background: var(--accent-muted); color: var(--accent); }
     .tree-item input[type="checkbox"] { margin-right: var(--space-1); accent-color: var(--accent); }
+    .tree-item .req-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .tree-item .method {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.6875rem;
@@ -710,6 +717,22 @@
       max-width: 1200px;
       margin: 0 auto;
     }
+    .live-results-wrap {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .live-results-title { font-size: 1rem; margin: 0 0 var(--space-3) 0; color: var(--text); }
+    .live-results-count { font-weight: 600; color: var(--accent); }
+    .live-results-table-wrap { max-height: 320px; overflow-y: auto; }
+    .live-results-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    .live-results-table th, .live-results-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--border); }
+    .live-results-table th { background: var(--bg); color: var(--text-muted); font-weight: 600; }
+    .live-results-table tr.success td:nth-child(3) { color: var(--success); }
+    .live-results-table tr.failed td:nth-child(3) { color: var(--danger); }
+    .live-results-table .response-preview { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.75rem; }
     .report-cover {
       background: linear-gradient(160deg, var(--surface2) 0%, var(--bg) 100%);
       border: 1px solid var(--border);
@@ -928,6 +951,9 @@
     .apis-list-wrap .api-line .m { font-size: 0.625rem; padding: 2px 5px; border-radius: 4px; min-width: 32px; text-align: center; font-weight: 600; }
     .sidebar .head-btns .btn-add { color: var(--accent); border-color: var(--accent); }
     .sidebar .head-btns .btn-add:hover { background: var(--accent-muted); }
+    .sidebar .head-btns .btn-expand-sidebar { font-size: 0.7rem; }
+    .sidebar-wrap.expanded { --sidebar-expanded-width: min(520px, 45vw); }
+    .sidebar-wrap.expanded .sidebar-resize { right: 0; }
 .tree-folder .tree-actions, .tree-item.request .tree-actions { opacity: 0; margin-left: auto; flex-shrink: 0; display: flex; gap: var(--space-1); align-items: center; }
 .tree-folder:hover .tree-actions, .tree-item.request:hover .tree-actions, .tree-item.request.selected .tree-actions { opacity: 1; }
 .btn-run-folder { padding: 2px 8px; font-size: 0.7rem; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent-muted); color: var(--accent); cursor: pointer; font-weight: 600; }
@@ -1116,6 +1142,10 @@
         <input type="number" id="durationSeconds" min="0" value="0" style="width:56px;" />
         <label title="Pause between each request (ms)">Delay (ms)</label>
         <input type="number" id="delayBetweenMs" min="0" value="0" style="width:56px;" />
+        <label title="Gradually increase load over this many seconds (0 = no ramp-up)">Ramp-up (sec)</label>
+        <input type="number" id="rampUpSeconds" min="0" value="0" style="width:56px;" />
+        <label title="Split load across this many workers (same machine)">Workers</label>
+        <input type="number" id="workers" min="1" max="8" value="1" style="width:48px;" />
         <span class="sla-inline" title="Pass criteria: min success rate and max p95 latency">
           <label>SLA</label>
           <input type="number" id="slaMinSuccessRate" min="0" max="100" value="0" placeholder="% success" style="width:52px;" title="Min success rate % (0 = off)" />
@@ -1153,6 +1183,15 @@
         <div class="empty-state" id="emptyState">
           <p>Select an API from the right panel, set Environment (baseUrl & token) and <strong>Send</strong> or <strong>Run test</strong> for load testing.</p>
         </div>
+        <div class="live-results-wrap" id="liveResultsWrap" style="display:none;">
+          <h3 class="live-results-title">Live results <span class="live-results-count" id="liveResultsCount">0</span></h3>
+          <div class="live-results-table-wrap">
+            <table class="live-results-table" id="liveResultsTable">
+              <thead><tr><th>#</th><th>Name / Path</th><th>Status</th><th>Code</th><th>Duration</th><th>Response / Error</th></tr></thead>
+              <tbody id="liveResultsBody"></tbody>
+            </table>
+          </div>
+        </div>
         <div id="reportContent" style="display:none;"></div>
       </div>
     </main>
@@ -1163,6 +1202,7 @@
         <div class="head">
           <span>Collections</span>
           <div class="head-btns">
+            <button type="button" class="btn-expand-sidebar" id="expandSidebarBtn" title="Expand panel to see full names">◐ Expand</button>
             <button type="button" class="btn-add" id="newCollectionBtn" title="New collection">+ Collection</button>
             <button type="button" class="btn-add" id="newRequestBtn" title="New request">+ Request</button>
             <button type="button" id="importBtn" title="Import (Hoppscotch or Postman JSON)">Import</button>
@@ -1391,6 +1431,7 @@
     const STORAGE_EXPANDED = 'apiTester_expandedPaths';
     const STORAGE_COLL_PREFIX = 'apiTester_coll_';
     const STORAGE_SIDEBAR_WIDTH = 'apiTester_sidebarWidth';
+    const STORAGE_SIDEBAR_EXPANDED = 'apiTester_sidebarExpanded';
 
     let flat = [];
     let collections = [];
@@ -2049,20 +2090,43 @@
       setStatus('Export started');
     });
 
-    (function initSidebarResize() {
+    (function initSidebarResizeAndExpand() {
       const app = document.querySelector('.app');
+      const wrap = document.getElementById('sidebarWrap');
       const resizeEl = document.getElementById('sidebarResize');
-      const minW = 260, maxW = 560;
+      const expandBtn = document.getElementById('expandSidebarBtn');
+      const minW = 260, maxW = 720;
+      const expandedWidth = Math.min(520, Math.max(400, Math.floor((typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth * 0.45 : 480)));
+      let isExpanded = false;
+      try { isExpanded = localStorage.getItem(STORAGE_SIDEBAR_EXPANDED) === '1'; } catch (_) {}
+      function applyExpanded(expanded) {
+        isExpanded = expanded;
+        if (wrap) wrap.classList.toggle('expanded', expanded);
+        if (app) app.style.setProperty('--sidebar-width', expanded ? (expandedWidth + 'px') : (app.getAttribute('data-sidebar-normal-width') || '320px'));
+        if (expandBtn) expandBtn.textContent = expanded ? 'Collapse' : 'Expand';
+        try { localStorage.setItem(STORAGE_SIDEBAR_EXPANDED, expanded ? '1' : '0'); } catch (_) {}
+      }
       try {
         const saved = localStorage.getItem(STORAGE_SIDEBAR_WIDTH);
-        if (saved) { const parsed = parseInt(saved.replace(/\D/g, ''), 10); if (!isNaN(parsed)) { const w = Math.min(maxW, Math.max(minW, parsed)); app.style.setProperty('--sidebar-width', w + 'px'); } }
+        if (saved && !isExpanded) { const parsed = parseInt(saved.replace(/\D/g, ''), 10); if (!isNaN(parsed)) { const w = Math.min(maxW, Math.max(minW, parsed)); app.style.setProperty('--sidebar-width', w + 'px'); app.setAttribute('data-sidebar-normal-width', w + 'px'); } }
+        else if (app && !app.getAttribute('data-sidebar-normal-width')) app.setAttribute('data-sidebar-normal-width', '320px');
       } catch (_) {}
+      if (expandBtn && wrap && app) {
+        expandBtn.addEventListener('click', () => {
+          if (!isExpanded) app.setAttribute('data-sidebar-normal-width', app.style.getPropertyValue('--sidebar-width') || '320px');
+          applyExpanded(!isExpanded);
+        });
+        if (isExpanded) applyExpanded(true);
+      } else if (app) {
+        app.setAttribute('data-sidebar-normal-width', app.style.getPropertyValue('--sidebar-width') || '320px');
+      }
       if (!resizeEl || !app) return;
       let startX = 0, startW = 0;
       function onMove(e) {
         const dx = e.clientX - startX;
         let w = Math.min(maxW, Math.max(minW, startW + dx));
         app.style.setProperty('--sidebar-width', w + 'px');
+        if (!isExpanded) app.setAttribute('data-sidebar-normal-width', w + 'px');
       }
       function onUp() {
         document.removeEventListener('mousemove', onMove);
@@ -2071,6 +2135,7 @@
       }
       resizeEl.addEventListener('mousedown', (e) => {
         e.preventDefault();
+        if (wrap && isExpanded) { wrap.classList.remove('expanded'); isExpanded = false; if (expandBtn) expandBtn.textContent = 'Expand'; try { localStorage.setItem(STORAGE_SIDEBAR_EXPANDED, '0'); } catch (_) {} }
         startX = e.clientX;
         const w = app.style.getPropertyValue('--sidebar-width');
         startW = w ? parseInt(w, 10) : 320;
@@ -2320,32 +2385,62 @@
       setStatus('API Runner finished: ' + passed + '/' + total + ' passed', passed === total ? 'success' : 'error');
     }
 
-    runBtn.addEventListener('click', async () => {
-      const ids = getRequestIds();
-      if (mode !== 'regression' && !ids.length) {
-        setStatus('Select at least one API', 'error');
-        return;
-      }
-      const collVars = getCollectionVariables();
-      const anyBase = baseUrlEl.value.trim() || Object.values(collVars).some(c => (c.baseUrl || '').trim());
-      if (!anyBase && flat.length && (flat[0]?.request?.endpoint || '').includes('<<baseUrl>>')) {
-        setStatus('Set baseUrl in Environment or per collection', 'error');
-        return;
-      }
-      const baseUrl = baseUrlEl.value.trim();
+    const liveResultsWrap = document.getElementById('liveResultsWrap');
+      const liveResultsBody = document.getElementById('liveResultsBody');
+      const liveResultsCountEl = document.getElementById('liveResultsCount');
 
-      runBtn.disabled = true;
-      runBtn.classList.add('running');
-      setStatus('Running…');
-      try {
+      function appendLiveRow(result, index) {
+        if (!liveResultsBody) return;
+        const name = (result.name || result.path || '–');
+        const status = result.success ? 'OK' : 'FAIL';
+        const code = result.statusCode != null ? result.statusCode : '–';
+        const duration = result.duration != null ? result.duration + ' ms' : '–';
+        const preview = (result.bodyPreview != null && result.bodyPreview !== '') ? String(result.bodyPreview).slice(0, 120) : (result.error || '–');
+        const tr = document.createElement('tr');
+        tr.className = result.success ? 'success' : 'failed';
+        tr.innerHTML = '<td>' + index + '</td><td>' + escapeHtml(name) + '</td><td>' + escapeHtml(status) + '</td><td>' + escapeHtml(String(code)) + '</td><td>' + escapeHtml(String(duration)) + '</td><td class="response-preview" title="' + escapeHtml(preview) + '">' + escapeHtml(preview) + '</td>';
+        liveResultsBody.appendChild(tr);
+        if (liveResultsCountEl) liveResultsCountEl.textContent = liveResultsBody.querySelectorAll('tr').length;
+        const wrap = document.querySelector('.live-results-table-wrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      }
+
+      runBtn.addEventListener('click', async () => {
+        const ids = getRequestIds();
+        if (mode !== 'regression' && !ids.length) {
+          setStatus('Select at least one API', 'error');
+          return;
+        }
+        const collVars = getCollectionVariables();
+        const anyBase = baseUrlEl.value.trim() || Object.values(collVars).some(c => (c.baseUrl || '').trim());
+        if (!anyBase && flat.length && (flat[0]?.request?.endpoint || '').includes('<<baseUrl>>')) {
+          setStatus('Set baseUrl in Environment or per collection', 'error');
+          return;
+        }
+        const baseUrl = baseUrlEl.value.trim();
+
+        runBtn.disabled = true;
+        runBtn.classList.add('running');
         const durationSec = parseInt(document.getElementById('durationSeconds')?.value, 10) || 0;
-        const delayMs = Math.max(0, parseInt(document.getElementById('delayBetweenMs')?.value, 10) || 0);
-        const slaMin = Math.min(100, Math.max(0, parseFloat(document.getElementById('slaMinSuccessRate')?.value) || 0));
-        const slaP95 = Math.max(0, parseInt(document.getElementById('slaMaxP95Ms')?.value, 10) || 0);
-        const { res, data: report } = await fetchJson('/api/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const iterCount = durationSec > 0 ? 0 : Math.max(1, parseInt(iterationsEl.value, 10) || 1);
+        const reqCount = mode === 'regression' ? (flat.length * iterCount) : (ids.length * iterCount);
+        const estMin = Math.ceil((reqCount * 0.5) / 60) || 1;
+        setStatus('Running test on server (' + reqCount + ' requests, wait up to ~' + estMin + ' min)… Do not close.');
+        emptyState.style.display = 'none';
+        if (liveResultsWrap) { liveResultsWrap.style.display = 'block'; }
+        if (liveResultsCountEl) liveResultsCountEl.textContent = '0';
+        if (liveResultsBody) liveResultsBody.innerHTML = '';
+        reportContent.style.display = 'block';
+        reportContent.innerHTML = '<p class="report-wait-msg" style="padding:24px;color:var(--textMuted);">Report will appear below when test completes.</p>';
+
+        let runTimeout;
+        try {
+          const delayMs = Math.max(0, parseInt(document.getElementById('delayBetweenMs')?.value, 10) || 0);
+          const slaMin = Math.min(100, Math.max(0, parseFloat(document.getElementById('slaMinSuccessRate')?.value) || 0));
+          const slaP95 = Math.max(0, parseInt(document.getElementById('slaMaxP95Ms')?.value, 10) || 0);
+          const runAbort = new AbortController();
+          runTimeout = setTimeout(() => runAbort.abort(), 5 * 60 * 1000);
+          const payload = {
             type: mode === 'regression' ? 'regression' : (mode === 'multiple' ? 'multiple' : 'single'),
             requestIds: ids,
             baseUrl,
@@ -2355,27 +2450,77 @@
             concurrency: Math.max(1, parseInt(concurrencyEl.value, 10) || 1),
             durationSeconds: durationSec > 0 ? durationSec : 0,
             delayBetweenRequestsMs: delayMs,
+            rampUpSeconds: Math.max(0, parseInt(document.getElementById('rampUpSeconds')?.value, 10) || 0),
+            workers: Math.min(8, Math.max(1, parseInt(document.getElementById('workers')?.value, 10) || 1)),
             sla: (slaMin > 0 || slaP95 > 0) ? { minSuccessRate: slaMin, maxP95Ms: slaP95 } : {},
             userData: loadTestUserData.length ? loadTestUserData : undefined,
             globalVariables: {},
-          }),
-        });
-        if (!res.ok) throw new Error(report.error || 'Run failed');
-        lastReport = report;
-        renderReport(report);
-        exportBtn.disabled = false;
-        const printReportBtn = document.getElementById('printReportBtn');
-        const exportHtmlBtn = document.getElementById('exportHtmlBtn');
-        if (printReportBtn) printReportBtn.disabled = false;
-        if (exportHtmlBtn) exportHtmlBtn.disabled = false;
-        setStatus(`Done: ${report.totalCalls} requests in ${(report.totalTime / 1000).toFixed(2)}s`, 'success');
-      } catch (e) {
-        setStatus('Error: ' + e.message, 'error');
-      } finally {
-        runBtn.disabled = false;
-        runBtn.classList.remove('running');
-      }
-    });
+            stream: true,
+          };
+          const res = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: runAbort.signal,
+            body: JSON.stringify(payload),
+          });
+          clearTimeout(runTimeout);
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Run failed');
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = '';
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() || '';
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              try {
+                const obj = JSON.parse(trimmed);
+                if (obj.type === 'result' && obj.result) appendLiveRow(obj.result, obj.index != null ? obj.index : (liveResultsBody ? liveResultsBody.querySelectorAll('tr').length + 1 : 1));
+                else if (obj.type === 'report' && obj.report) {
+                  lastReport = obj.report;
+                  renderReport(obj.report);
+                  exportBtn.disabled = false;
+                  const printReportBtn = document.getElementById('printReportBtn');
+                  const exportHtmlBtn = document.getElementById('exportHtmlBtn');
+                  if (printReportBtn) printReportBtn.disabled = false;
+                  if (exportHtmlBtn) exportHtmlBtn.disabled = false;
+                  setStatus('Done: ' + obj.report.totalCalls + ' requests in ' + (obj.report.totalTime / 1000).toFixed(2) + 's', 'success');
+                }
+              } catch (_) {}
+            }
+          }
+          if (buf.trim()) {
+            try {
+              const obj = JSON.parse(buf.trim());
+              if (obj.type === 'result' && obj.result) appendLiveRow(obj.result, obj.index != null ? obj.index : (liveResultsBody ? liveResultsBody.querySelectorAll('tr').length + 1 : 1));
+              else if (obj.type === 'report' && obj.report) {
+                lastReport = obj.report;
+                renderReport(obj.report);
+                exportBtn.disabled = false;
+                const printReportBtn = document.getElementById('printReportBtn');
+                const exportHtmlBtn = document.getElementById('exportHtmlBtn');
+                if (printReportBtn) printReportBtn.disabled = false;
+                if (exportHtmlBtn) exportHtmlBtn.disabled = false;
+                setStatus('Done: ' + obj.report.totalCalls + ' requests in ' + (obj.report.totalTime / 1000).toFixed(2) + 's', 'success');
+              }
+            } catch (_) {}
+          }
+        } catch (e) {
+          if (runTimeout) clearTimeout(runTimeout);
+          const msg = (e && e.name === 'AbortError') ? 'Test timed out (5 min). Server slow or not responding? Check npm start is running.' : e.message;
+          setStatus('Error: ' + msg, 'error');
+        } finally {
+          runBtn.disabled = false;
+          runBtn.classList.remove('running');
+        }
+      });
 
     document.getElementById('runnerBtn').addEventListener('click', async () => {
       const ids = getRequestIds();
@@ -2471,6 +2616,8 @@
       }
       const findingsHtml = findings.length ? `<ul>${findings.map((f, i) => `<li class="${i === 0 && failCount > 0 ? 'fail' : ''}">${escapeHtml(f)}</li>`).join('')}</ul>` : '<p style="color:var(--textMuted);font-size:0.9rem;">No data.</p>';
       const reportMetaParts = [(report.type || 'single'), (report.durationSeconds ? report.durationSeconds + 's run' : (report.iterations ?? 1) + ' iteration(s)'), 'Concurrency ' + (report.concurrency ?? 1)];
+      if (report.rampUpSeconds) reportMetaParts.push('Ramp-up ' + report.rampUpSeconds + 's');
+      if (report.workers > 1) reportMetaParts.push('Workers ' + report.workers);
       if (report.delayBetweenRequestsMs) reportMetaParts.push('Delay ' + report.delayBetweenRequestsMs + 'ms');
       const slaBadge = report.sla && typeof report.sla.pass === 'boolean'
         ? `<span class="sla-badge ${report.sla.pass ? 'pass' : 'fail'}" title="SLA: ${report.sla.minSuccessRate ? 'Success rate ≥ ' + report.sla.minSuccessRate + '%' : ''} ${report.sla.maxP95Ms ? 'p95 ≤ ' + report.sla.maxP95Ms + 'ms' : ''}">SLA ${report.sla.pass ? 'PASS' : 'FAIL'}</span>`
@@ -2480,6 +2627,8 @@
         ['Mode', (report.type || 'single')],
         ['Iterations', report.durationSeconds ? '–' : (report.iterations ?? 1)],
         ['Concurrency', report.concurrency ?? 1],
+        ...(report.workers > 1 ? [['Workers', report.workers]] : []),
+        ...(report.rampUpSeconds ? [['Ramp-up', report.rampUpSeconds + 's']] : []),
         ...(report.durationSeconds ? [['Run for', report.durationSeconds + 's']] : []),
         ...(report.delayBetweenRequestsMs ? [['Delay between requests', report.delayBetweenRequestsMs + 'ms']] : []),
         ['Total requests', report.totalCalls ?? 0],
@@ -2564,9 +2713,52 @@
         </tr>`;
       }
       html += `</tbody></table>
-        <div class="report-footer">Generated by PostMeter · ${reportDate} · ${report.totalCalls || 0} requests</div>
+        <h3 style="margin-top:24px;">4. Sample responses (like JMeter)</h3>
+        <p class="report-hint" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;">Har request ka response body + headers. Click "Show" to expand.</p>`;
+      for (const [reqId, data] of Object.entries(report.byRequest || {})) {
+        const samples = (data && data.results) ? data.results : [];
+        const name = escapeHtml((data && data.name) || reqId);
+        const sampleId = 'sample-' + reqId.replace(/[^a-z0-9-]/gi, '_');
+        html += `<div class="response-samples-block" style="margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <button type="button" class="response-samples-toggle" data-target="${sampleId}" style="width:100%;padding:12px 16px;text-align:left;background:var(--surface2);border:none;color:var(--text);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+            <span>${name}</span>
+            <span class="response-samples-count">${samples.length} response(s)</span>
+          </button>
+          <div id="${sampleId}" class="response-samples-list" style="display:none;padding:12px;background:var(--bg);max-height:400px;overflow:auto;">`;
+        (samples.slice(0, 20)).forEach((s, idx) => {
+          const status = s.statusCode ?? '-';
+          const duration = (s.duration != null) ? s.duration + ' ms' : '-';
+          const err = (s.error && String(s.error).trim()) ? escapeHtml(String(s.error).trim()) : '';
+          const body = (s.bodyPreview && String(s.bodyPreview).trim()) ? escapeHtml(String(s.bodyPreview).trim()) : (err || '(no body)');
+          const headers = s.responseHeaders && typeof s.responseHeaders === 'object' ? Object.entries(s.responseHeaders).map(([k, v]) => k + ': ' + v).join('\n') : '';
+          const headerStr = headers ? escapeHtml(headers) : '';
+          html += `<div class="response-sample-item" style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
+            <div class="response-sample-head" style="padding:8px 12px;background:var(--surface2);display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+              <span><strong>#${idx + 1}</strong></span>
+              <span class="status-badge" style="padding:2px 8px;border-radius:4px;font-size:0.75rem;${status >= 200 && status < 300 ? 'background:var(--accent-muted);color:var(--accent);' : 'background:var(--danger-muted);color:var(--danger);'}">${status}</span>
+              <span>${duration}</span>
+              ${err ? `<span style="color:var(--danger);">${err}</span>` : ''}
+            </div>
+            <details style="font-size:0.8rem;">
+              <summary style="padding:6px 12px;cursor:pointer;color:var(--accent);">Response body</summary>
+              <pre style="margin:0;padding:12px;background:var(--surface);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto;">${body}</pre>
+            </details>
+            ${headerStr ? `<details style="font-size:0.8rem;"><summary style="padding:6px 12px;cursor:pointer;color:var(--accent);">Headers</summary><pre style="margin:0;padding:12px;background:var(--surface);white-space:pre-wrap;font-size:0.75rem;max-height:120px;overflow:auto;">${headerStr}</pre></details>` : ''}
+          </div>`;
+        });
+        if (samples.length > 20) html += `<p style="font-size:0.8rem;color:var(--text-muted);padding:8px;">... and ${samples.length - 20} more. First 20 shown.</p>`;
+        html += `</div></div>`;
+      }
+      html += `<div class="report-footer" style="margin-top:16px;">Generated by PostMeter · ${reportDate} · ${report.totalCalls || 0} requests</div>
       </div>`;
       reportContent.innerHTML = html;
+      reportContent.querySelectorAll('.response-samples-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-target');
+          const el = id ? document.getElementById(id) : null;
+          if (el) { el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+        });
+      });
 
       const chartOpt = { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { font: { size: 11 }, color: '#8b92a5', padding: 14 } } } };
       const gridOpt = { color: 'rgba(255,255,255,0.06)' };
@@ -2761,7 +2953,7 @@
       <div class="report-doc-title">API Load Test Report</div>
       <div class="report-doc-sub">Performance &amp; reliability assessment</div>
       <div class="report-date">${runDate}</div>
-      <div class="report-meta">${(report.type || 'single')} · ${report.iterations ?? 1} iteration(s) · Concurrency ${report.concurrency ?? 1}</div>
+      <div class="report-meta">${(report.type || 'single')} · ${report.iterations ?? 1} iteration(s) · Concurrency ${report.concurrency ?? 1}${report.rampUpSeconds ? ' · Ramp-up ' + report.rampUpSeconds + 's' : ''}${report.workers > 1 ? ' · Workers ' + report.workers : ''}</div>
     </div>
     <div class="report-section">
       <div class="executive-summary">
@@ -2773,7 +2965,7 @@
       <div class="report-detail-grid">
         <div class="report-config">
           <h4>Test configuration</h4>
-          <dl><dt>Run at</dt><dd>${runDate}</dd><dt>Mode</dt><dd>${report.type || 'single'}</dd><dt>Iterations</dt><dd>${report.iterations ?? 1}</dd><dt>Concurrency</dt><dd>${report.concurrency ?? 1}</dd><dt>Total requests</dt><dd>${report.totalCalls ?? 0}</dd><dt>Total duration</dt><dd>${(report.totalTime / 1000).toFixed(2)}s</dd></dl>
+          <dl><dt>Run at</dt><dd>${runDate}</dd><dt>Mode</dt><dd>${report.type || 'single'}</dd><dt>Iterations</dt><dd>${report.iterations ?? 1}</dd><dt>Concurrency</dt><dd>${report.concurrency ?? 1}</dd>${report.workers > 1 ? '<dt>Workers</dt><dd>' + report.workers + '</dd>' : ''}${report.rampUpSeconds ? '<dt>Ramp-up</dt><dd>' + report.rampUpSeconds + 's</dd>' : ''}<dt>Total requests</dt><dd>${report.totalCalls ?? 0}</dd><dt>Total duration</dt><dd>${(report.totalTime / 1000).toFixed(2)}s</dd></dl>
         </div>
         <div class="report-findings">
           <h4>Key findings</h4>

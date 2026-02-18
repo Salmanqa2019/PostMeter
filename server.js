@@ -2,11 +2,18 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3847;
 const IS_VERCEL = process.env.VERCEL === '1';
+const MAX_CONCURRENCY = Math.min(500, Math.max(1, parseInt(process.env.MAX_CONCURRENCY, 10) || 200));
+
+// Shared HTTP/HTTPS agents for scalable load testing (reuse connections, limit sockets)
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: Math.min(100, MAX_CONCURRENCY) });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: Math.min(100, MAX_CONCURRENCY) });
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -16,6 +23,14 @@ const COLLECTIONS_PATH = IS_VERCEL
   ? '/tmp/hoppscotch-team-collections.json'
   : path.join(__dirname, 'hoppscotch-team-collections.json');
 const COLLECTIONS_PATH_ALT = path.join(process.cwd(), 'hoppscotch-team-collections.json');
+
+let store = null;
+function getStore() {
+  if (!IS_VERCEL && !store) {
+    try { store = require('./db'); } catch (_) {}
+  }
+  return store;
+}
 
 function getCollectionsPath() {
   if (IS_VERCEL) {
@@ -27,6 +42,49 @@ function getCollectionsPath() {
   if (fs.existsSync(COLLECTIONS_PATH)) return COLLECTIONS_PATH;
   if (fs.existsSync(COLLECTIONS_PATH_ALT)) return COLLECTIONS_PATH_ALT;
   return COLLECTIONS_PATH;
+}
+
+function readCollections() {
+  const s = getStore();
+  if (s && s.useDatabase && s.useDatabase()) {
+    let data = s.getCollections();
+    if (Array.isArray(data) && data.length > 0) return data;
+    const filePath = getCollectionsPath();
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        data = JSON.parse(raw);
+        const arr = Array.isArray(data) ? data : (data && data.collections ? data.collections : []);
+        if (arr.length) { s.saveCollections(arr); return arr; }
+      } catch (_) {}
+    }
+    return data || [];
+  }
+  const filePath = getCollectionsPath();
+  if (IS_VERCEL && !fs.existsSync(COLLECTIONS_PATH)) {
+    try { fs.writeFileSync(COLLECTIONS_PATH, JSON.stringify([]), 'utf8'); } catch (_) {}
+  }
+  try {
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? data : (data && data.collections ? data.collections : []);
+    }
+  } catch (_) {}
+  return [];
+}
+
+function writeCollections(data) {
+  const arr = Array.isArray(data) ? data : [];
+  const s = getStore();
+  if (s && s.useDatabase && s.useDatabase()) {
+    if (s.saveCollections(arr)) return true;
+  }
+  const filePath = getCollectionsPath();
+  try {
+    fs.writeFileSync(fs.existsSync(filePath) ? filePath : COLLECTIONS_PATH, JSON.stringify(arr, null, 2), 'utf8');
+    return true;
+  } catch (_) { return false; }
 }
 
 // Convert Postman Collection v2.x to Hoppscotch-style array of collections
@@ -277,19 +335,34 @@ async function runSingleRequest(axiosConfig) {
   let statusCode = 0;
   let success = false;
   let errorMessage = '';
+  if (!axiosConfig || typeof axiosConfig !== 'object') {
+    return { duration: 0, statusCode: 0, success: false, error: 'Invalid request config' };
+  }
+  let bodyPreview = '';
+  let responseHeaders = {};
   try {
     const res = await axios({
       ...axiosConfig,
       timeout: 30000,
       validateStatus: () => true,
+      httpAgent,
+      httpsAgent,
+      responseType: 'text',
     });
     statusCode = res.status;
     success = res.status >= 200 && res.status < 300;
+    if (res.data != null) {
+      const raw = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+      bodyPreview = raw.length > 2000 ? raw.slice(0, 2000) + '\n...[truncated]' : raw;
+    }
+    if (res.headers && typeof res.headers === 'object') {
+      responseHeaders = { ...res.headers };
+    }
   } catch (err) {
-    errorMessage = err.code || err.message || String(err);
+    errorMessage = (err && (err.code || err.message)) || String(err);
   }
   const duration = Date.now() - start;
-  return { duration, statusCode, success, error: errorMessage || null };
+  return { duration, statusCode, success, error: errorMessage || null, bodyPreview, responseHeaders };
 }
 
 async function sendOneRequest(axiosConfig) {
@@ -300,6 +373,8 @@ async function sendOneRequest(axiosConfig) {
       timeout: 60000,
       validateStatus: () => true,
       responseType: 'text',
+      httpAgent,
+      httpsAgent,
     });
     const duration = Date.now() - start;
     let data = res.data;
@@ -325,42 +400,90 @@ async function sendOneRequest(axiosConfig) {
   }
 }
 
-function runWithConcurrency(tasks, concurrency, delayBetweenMs = 0) {
+function runWithConcurrency(tasks, concurrency, delayBetweenMs = 0, rampUpMs = 0, taskTimeoutMs = 20000, onResult = null) {
   return new Promise((resolve) => {
     const results = [];
     let index = 0;
+    let running = 0;
+    const startTime = Date.now();
+    const timeoutMs = Math.min(120000, Math.max(5000, taskTimeoutMs));
+    function getCurrentMax() {
+      if (rampUpMs <= 0) return concurrency;
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= rampUpMs) return concurrency;
+      return Math.min(concurrency, Math.max(1, Math.floor(1 + (concurrency - 1) * (elapsed / rampUpMs))));
+    }
+
+    function runTaskWithTimeout(task, i) {
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), timeoutMs));
+      return Promise.race([task(), timeoutPromise]);
+    }
 
     function runNext() {
       if (index >= tasks.length) {
-        if (results.length === tasks.length) resolve(results);
+        if (running === 0) {
+          for (let j = 0; j < tasks.length; j++) {
+            if (results[j] === undefined) results[j] = { duration: 0, statusCode: 0, success: false, error: 'No result' };
+          }
+          resolve(results);
+        }
         return;
       }
+      const maxNow = getCurrentMax();
+      if (running >= maxNow) return;
       const i = index++;
       const task = tasks[i];
-      task()
+      if (typeof task !== 'function') {
+        results[i] = { duration: 0, statusCode: 0, success: false, error: 'Invalid task' };
+        runNext();
+        return;
+      }
+      running++;
+      function done() {
+        running--;
+        runNext();
+      }
+      runTaskWithTimeout(task, i)
         .then((r) => {
-          results[i] = r;
-          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+          try {
+            results[i] = (r && typeof r === 'object') ? r : { duration: 0, statusCode: 0, success: false, error: 'Invalid result' };
+          } catch (_) {
+            results[i] = { duration: 0, statusCode: 0, success: false, error: 'Result assign failed' };
+          }
+          if (onResult && results[i]) onResult(results[i], i);
+          if (delayBetweenMs > 0) return new Promise((res) => setTimeout(res, delayBetweenMs));
         })
-        .then(() => runNext())
         .catch((e) => {
-          results[i] = { duration: 0, statusCode: 0, success: false, error: e.message };
-          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+          try {
+            results[i] = { duration: 0, statusCode: 0, success: false, error: (e && e.message) ? e.message : String(e) };
+          } catch (_) {
+            results[i] = { duration: 0, statusCode: 0, success: false, error: 'Error' };
+          }
+          if (onResult && results[i]) onResult(results[i], i);
+          if (delayBetweenMs > 0) return new Promise((res) => setTimeout(res, delayBetweenMs));
         })
-        .then(() => runNext());
+        .finally(() => { done(); });
+      runNext();
     }
 
-    for (let c = 0; c < Math.min(concurrency, tasks.length); c++) runNext();
+    const initialSlots = rampUpMs > 0 ? 1 : Math.min(concurrency, tasks.length);
+    for (let c = 0; c < initialSlots; c++) runNext();
   });
 }
 
-function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBetweenMs) {
+function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBetweenMs, rampUpMs = 0, onResult = null) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     const results = [];
     let running = 0;
     let index = 0;
     let taskIndex = 0;
+    function getCurrentMax() {
+      if (rampUpMs <= 0) return concurrency;
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= rampUpMs) return concurrency;
+      return Math.min(concurrency, Math.max(1, Math.floor(1 + (concurrency - 1) * (elapsed / rampUpMs))));
+    }
 
     function runOne() {
       if (Date.now() - startTime >= durationMs) {
@@ -374,12 +497,16 @@ function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBe
       const opts = getOptsForItem(item, currentTaskIndex);
       runSingleRequest(opts)
         .then((r) => {
-          results.push({ ...r, name: item.request?.name, path: item.path, id: item.id });
-          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+          const row = { ...r, name: item.request?.name, path: item.path, id: item.id };
+          results.push(row);
+          if (onResult) onResult(row, results.length - 1);
+          if (delayBetweenMs > 0) return new Promise((res) => setTimeout(res, delayBetweenMs));
         })
         .catch((e) => {
-          results.push({ duration: 0, statusCode: 0, success: false, error: e.message, name: item.request?.name, path: item.path, id: item.id });
-          if (delayBetweenMs > 0) return new Promise((r) => setTimeout(r, delayBetweenMs));
+          const row = { duration: 0, statusCode: 0, success: false, error: e.message, name: item.request?.name, path: item.path, id: item.id };
+          results.push(row);
+          if (onResult) onResult(row, results.length - 1);
+          if (delayBetweenMs > 0) return new Promise((res) => setTimeout(res, delayBetweenMs));
         })
         .then(() => {
           running--;
@@ -389,7 +516,8 @@ function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBe
     }
 
     function runNext() {
-      while (running < concurrency && Date.now() - startTime < durationMs) runOne();
+      const maxNow = getCurrentMax();
+      while (running < maxNow && Date.now() - startTime < durationMs) runOne();
       if (running === 0) resolve(results);
     }
 
@@ -398,13 +526,17 @@ function runWithDuration(toRun, getOptsForItem, durationMs, concurrency, delayBe
 }
 
 function computeStats(results) {
-  const safe = (results || []).filter(r => r && typeof r === 'object');
+  const arr = results || [];
+  const safe = arr.filter(r => r && typeof r === 'object');
+  const missingCount = arr.length - safe.length;
   const durations = safe.map(r => r.duration).filter(n => typeof n === 'number');
   const sorted = [...durations].sort((a, b) => a - b);
   const sum = sorted.reduce((a, b) => a + b, 0);
   const n = sorted.length;
   const success = safe.filter(r => r.success).length;
   const failed = safe.filter(r => !r.success);
+  const failCount = failed.length + missingCount;
+  const totalRequests = arr.length;
   const p50 = sorted[Math.floor(n * 0.5)] ?? 0;
   const p95 = sorted[Math.floor(n * 0.95)] ?? 0;
   const p99 = sorted[Math.floor(n * 0.99)] ?? 0;
@@ -412,6 +544,7 @@ function computeStats(results) {
   const max = sorted[n - 1] ?? 0;
   const avg = n ? sum / n : 0;
   const errors = failed.map(f => f.error).filter(Boolean);
+  if (missingCount > 0) errors.push(...Array(missingCount).fill('No response (timeout/hang)'));
   const errorCounts = {};
   errors.forEach(e => { errorCounts[e] = (errorCounts[e] || 0) + 1; });
   const statusCodeCounts = {};
@@ -420,10 +553,10 @@ function computeStats(results) {
     statusCodeCounts[code] = (statusCodeCounts[code] || 0) + 1;
   });
   return {
-    totalRequests: safe.length,
+    totalRequests,
     successCount: success,
-    failCount: failed.length,
-    successRate: safe.length ? (success / safe.length * 100).toFixed(2) + '%' : '0%',
+    failCount,
+    successRate: totalRequests ? ((success / totalRequests) * 100).toFixed(2) + '%' : '0%',
     duration: { min, max, avg: Math.round(avg), p50, p95, p99 },
     errors: errorCounts,
     rawDurations: durations,
@@ -431,20 +564,10 @@ function computeStats(results) {
   };
 }
 
-// GET collections structure (from file or from body later)
+// GET collections structure (from DB or file)
 app.get('/api/collections', (req, res) => {
   try {
-    let data = [];
-    const filePath = getCollectionsPath();
-    try {
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        data = JSON.parse(raw);
-        if (!Array.isArray(data)) data = [];
-      }
-    } catch (err) {
-      console.error('Read collections error:', err.message);
-    }
+    const data = readCollections();
     const flat = flattenRequests(data);
     let env = { baseUrl: '', bearerToken: '' };
     try {
@@ -499,15 +622,8 @@ app.post('/api/send', async (req, res) => {
   try {
     const { requestId, baseUrl, bearerToken, collectionVariables } = req.body;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const filePath = getCollectionsPath();
-    let raw;
-    try {
-      if (!fs.existsSync(filePath)) return res.status(400).json({ error: 'Collections file not found' });
-      raw = fs.readFileSync(filePath, 'utf8');
-    } catch (_) {
-      return res.status(400).json({ error: 'Collections file not found' });
-    }
-    const data = JSON.parse(raw);
+    const data = readCollections();
+    if (!Array.isArray(data) || data.length === 0) return res.status(400).json({ error: 'No collections loaded' });
     const flat = flattenRequests(data);
     const item = flat.find(r => r.id === requestId);
     if (!item) return res.status(404).json({ error: 'Request not found' });
@@ -524,6 +640,7 @@ app.post('/api/send', async (req, res) => {
 // POST run test (single / multiple / regression)
 app.post('/api/run', async (req, res) => {
   try {
+    console.log('[PostMeter] Run test requested');
     const {
       type,
       requestIds,
@@ -532,11 +649,14 @@ app.post('/api/run', async (req, res) => {
       concurrency = 1,
       durationSeconds = 0,
       delayBetweenRequestsMs = 0,
+      rampUpSeconds = 0,
+      workers = 1,
       sla = {},
       globalVariables = {},
       bearerToken,
       collectionVariables: cv,
       userData = [],
+      stream: streamMode = false,
     } = req.body;
     const collectionVariables = cv && typeof cv === 'object' ? cv : {};
     const gv = { ...globalVariables };
@@ -544,17 +664,13 @@ app.post('/api/run', async (req, res) => {
     const users = Array.isArray(userData) ? userData.filter((u) => u && typeof u === 'object') : [];
     const durationMs = Math.max(0, parseInt(durationSeconds, 10) || 0) * 1000;
     const delayMs = Math.max(0, parseInt(delayBetweenRequestsMs, 10) || 0);
+    const rampUpMs = Math.max(0, parseInt(rampUpSeconds, 10) || 0) * 1000;
+    const workersNum = Math.min(8, Math.max(1, parseInt(workers, 10) || 1));
+    const taskTimeoutMs = 35000;
     const minSuccessRate = Math.min(100, Math.max(0, parseFloat(sla.minSuccessRate) || 0));
     const maxP95Ms = Math.max(0, parseInt(sla.maxP95Ms, 10) || 0);
-    const filePath = getCollectionsPath();
-    let raw;
-    try {
-      if (!fs.existsSync(filePath)) return res.status(400).json({ error: 'Collections file not found. Add hoppscotch-team-collections.json or Import JSON.' });
-      raw = fs.readFileSync(filePath, 'utf8');
-    } catch (_) {
-      return res.status(400).json({ error: 'Collections file not found' });
-    }
-    const data = JSON.parse(raw);
+    const data = readCollections();
+    if (!Array.isArray(data)) return res.status(400).json({ error: 'No collections loaded. Import JSON or add requests.' });
     const flat = flattenRequests(data);
 
     let toRun = [];
@@ -588,7 +704,18 @@ app.post('/api/run', async (req, res) => {
     }
 
     const startTime = Date.now();
-    const concurrencyNum = Math.max(1, parseInt(concurrency, 10) || 1);
+    const concurrencyNum = Math.min(MAX_CONCURRENCY, Math.max(1, parseInt(concurrency, 10) || 1));
+    const concurrencyPerWorker = Math.max(1, Math.floor(concurrencyNum / workersNum));
+
+    if (streamMode) {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Cache-Control', 'no-cache');
+      if (res.flushHeaders) res.flushHeaders();
+    }
+    let streamIndex = 0;
+    const streamOnResult = streamMode ? (r) => {
+      try { res.write(JSON.stringify({ type: 'result', result: r, index: ++streamIndex }) + '\n'); } catch (e) {}
+    } : null;
 
     let results;
     let taskIndex = 0;
@@ -599,21 +726,55 @@ app.post('/api/run', async (req, res) => {
         const perRequest = users.length ? users[index % users.length] : {};
         const { baseUrl: resolvedBase, token } = resolveForRequest(item, base, gv.bearerToken, collectionVariables);
         const reqGv = { ...gv, bearerToken: token };
-        return buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
+        const opts = buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
+        return opts;
       };
-      results = await runWithDuration(toRun, getOpts, durationMs, concurrencyNum, delayMs);
+      if (workersNum <= 1) {
+        results = await runWithDuration(toRun, getOpts, durationMs, concurrencyNum, delayMs, rampUpMs, streamOnResult);
+      } else {
+        const workerPromises = [];
+        for (let w = 0; w < workersNum; w++) {
+          workerPromises.push(runWithDuration(toRun, getOpts, durationMs, concurrencyPerWorker, delayMs, rampUpMs, streamOnResult));
+        }
+        const workerResults = await Promise.all(workerPromises);
+        results = workerResults.flat();
+      }
     } else {
       const allTasks = [];
       for (let i = 0; i < iterations; i++) {
         for (const item of toRun) {
+          if (!item || !item.request) continue;
           const perRequest = getPerRequestVars();
           const { baseUrl: resolvedBase, token } = resolveForRequest(item, base, gv.bearerToken, collectionVariables);
           const reqGv = { ...gv, bearerToken: token };
-          const opts = buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
-          allTasks.push(() => runSingleRequest(opts).then(r => ({ ...r, name: item.request.name, path: item.path, id: item.id })));
+          let opts;
+          try {
+            opts = buildRequestOptions(item.request, resolvedBase, reqGv, perRequest);
+          } catch (buildErr) {
+            allTasks.push(() => Promise.resolve({ duration: 0, statusCode: 0, success: false, error: (buildErr && buildErr.message) || 'Build failed', name: item.request && item.request.name, path: item.path, id: item.id }));
+            continue;
+          }
+          const name = item.request.name;
+          const path = item.path;
+          const id = item.id;
+          allTasks.push(() => runSingleRequest(opts).then(r => ({ ...r, name, path, id })));
         }
       }
-      results = await runWithConcurrency(allTasks, concurrencyNum, delayMs);
+      if (allTasks.length === 0) {
+        return res.status(400).json({ error: 'No valid requests to run. Check selection and request config.' });
+      }
+      console.log('[PostMeter] Running', allTasks.length, 'requests, concurrency', concurrencyNum);
+      if (workersNum <= 1) {
+        results = await runWithConcurrency(allTasks, concurrencyNum, delayMs, rampUpMs, taskTimeoutMs, streamOnResult);
+      } else {
+        const chunkSize = Math.ceil(allTasks.length / workersNum);
+        const chunks = [];
+        for (let w = 0; w < workersNum; w++) {
+          chunks.push(allTasks.slice(w * chunkSize, w * chunkSize + chunkSize));
+        }
+        const workerResults = await Promise.all(chunks.map(chunk => chunk.length ? runWithConcurrency(chunk, concurrencyPerWorker, delayMs, rampUpMs, taskTimeoutMs, streamOnResult) : Promise.resolve([])));
+        results = workerResults.flat();
+      }
     }
 
     const totalTime = Date.now() - startTime;
@@ -644,7 +805,7 @@ app.post('/api/run', async (req, res) => {
         name: validResults[0]?.name,
         path: validResults[0]?.path,
         stats: computeStats(validResults),
-        results: validResults.map(r => ({ duration: r.duration, statusCode: r.statusCode, success: r.success, error: r.error })),
+        results: validResults.map(r => ({ duration: r.duration, statusCode: r.statusCode, success: r.success, error: r.error, bodyPreview: r.bodyPreview || '', responseHeaders: r.responseHeaders || {} })),
       };
     }
 
@@ -654,6 +815,8 @@ app.post('/api/run', async (req, res) => {
 
     report.durationSeconds = durationMs > 0 ? durationMs / 1000 : null;
     report.delayBetweenRequestsMs = delayMs > 0 ? delayMs : null;
+    report.rampUpSeconds = rampUpMs > 0 ? rampUpMs / 1000 : null;
+    report.workers = workersNum;
     report.sla = { minSuccessRate: minSuccessRate || null, maxP95Ms: maxP95Ms || null };
     if (minSuccessRate > 0 || maxP95Ms > 0) {
       const actualRate = results.length ? (results.filter((r) => r && r.success).length / results.length) * 100 : 0;
@@ -665,9 +828,16 @@ app.post('/api/run', async (req, res) => {
       report.sla.pass = passRate && passP95;
     }
 
+    console.log('[PostMeter] Run finished:', results.length, 'results');
+    if (streamMode) {
+      try { res.write(JSON.stringify({ type: 'report', report }) + '\n'); } catch (e) {}
+      res.end();
+      return;
+    }
     res.json(report);
   } catch (err) {
-    res.status(500).json({ error: err.message || 'Run failed' });
+    console.error('[PostMeter] Run error:', err && err.message);
+    if (!res.headersSent) res.status(500).json({ error: (err && err.message) || 'Run failed' });
   }
 });
 
@@ -687,8 +857,7 @@ app.post('/api/collections/upload', (req, res) => {
     } else {
       return res.status(400).json({ error: 'Use Hoppscotch (array) or Postman (object with item[]) JSON' });
     }
-    const filePath = getCollectionsPath();
-    fs.writeFileSync(fs.existsSync(filePath) ? filePath : COLLECTIONS_PATH, JSON.stringify(collections, null, 2), 'utf8');
+    writeCollections(collections);
     const flat = flattenRequests(collections);
     res.json({ ok: true, flat, collections });
   } catch (err) {
@@ -699,13 +868,11 @@ app.post('/api/collections/upload', (req, res) => {
 // Export: get current collection as JSON (like Postman/Hoppscotch export)
 app.get('/api/collections/export', (req, res) => {
   try {
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collection to export' });
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const data = JSON.parse(raw);
+    const data = readCollections();
+    if (!Array.isArray(data) || data.length === 0) return res.status(404).json({ error: 'No collection to export' });
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="collection.json"');
-    res.send(JSON.stringify(Array.isArray(data) ? data : [data], null, 2));
+    res.send(JSON.stringify(data, null, 2));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -731,14 +898,8 @@ function findRequestLocation(data, requestId) {
 // Add new collection
 app.post('/api/collections', (req, res) => {
   try {
-    let data = [];
-    const filePath = getCollectionsPath();
-    try {
-      if (fs.existsSync(filePath)) data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (!Array.isArray(data)) data = [];
-    } catch (_) {
-      data = [];
-    }
+    let data = readCollections();
+    if (!Array.isArray(data)) data = [];
     const name = (req.body && req.body.name) || 'New Collection';
     const newCol = {
       v: 11,
@@ -748,7 +909,7 @@ app.post('/api/collections', (req, res) => {
       requests: [],
     };
     data.push(newCol);
-    fs.writeFileSync(fs.existsSync(filePath) ? filePath : COLLECTIONS_PATH, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -759,15 +920,13 @@ app.post('/api/collections', (req, res) => {
 // Update collection (e.g. rename)
 app.patch('/api/collections/:index', (req, res) => {
   try {
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
-    let data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    let data = readCollections();
     if (!Array.isArray(data)) data = [];
     const index = parseInt(req.params.index, 10);
     if (isNaN(index) || index < 0 || index >= data.length) return res.status(400).json({ error: 'Invalid collection index' });
     const col = data[index];
     if (req.body && req.body.name != null) col.name = String(req.body.name).trim() || col.name || 'Collection';
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -778,14 +937,12 @@ app.patch('/api/collections/:index', (req, res) => {
 // Delete collection by index
 app.delete('/api/collections/:index', (req, res) => {
   try {
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
-    let data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    let data = readCollections();
     if (!Array.isArray(data)) data = [];
     const index = parseInt(req.params.index, 10);
     if (isNaN(index) || index < 0 || index >= data.length) return res.status(400).json({ error: 'Invalid collection index' });
     data.splice(index, 1);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -798,15 +955,14 @@ app.delete('/api/collections/request/:requestId', (req, res) => {
   try {
     const requestId = req.params.requestId;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data = readCollections();
+    if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
     const col = data[loc.colIndex];
     const reqList = loc.folderIndex != null ? (col.folders[loc.folderIndex].requests || []) : (col.requests || []);
     reqList.splice(loc.requestIndex, 1);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -820,9 +976,8 @@ app.put('/api/collections/request/:requestId', (req, res) => {
     const requestId = req.params.requestId;
     const updates = req.body && req.body.request ? req.body.request : req.body;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data = readCollections();
+    if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
     const reqObj = loc.request;
@@ -833,7 +988,7 @@ app.put('/api/collections/request/:requestId', (req, res) => {
     if (updates.headers != null) reqObj.headers = Array.isArray(updates.headers) ? updates.headers : [];
     if (updates.body != null) reqObj.body = updates.body;
     if (updates.auth != null) reqObj.auth = updates.auth;
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -846,9 +1001,8 @@ app.post('/api/collections/request/duplicate', (req, res) => {
   try {
     const requestId = req.body && req.body.requestId;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const filePath = getCollectionsPath();
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'No collections file' });
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const data = readCollections();
+    if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
     const col = data[loc.colIndex];
@@ -859,7 +1013,7 @@ app.post('/api/collections/request/duplicate', (req, res) => {
     newReq.id = newId;
     newReq.name = (oldReq.name || 'Request') + ' (copy)';
     reqList.splice(loc.requestIndex + 1, 0, newReq);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, id: newId, collections: data, flat });
   } catch (err) {
@@ -870,14 +1024,7 @@ app.post('/api/collections/request/duplicate', (req, res) => {
 // Add new API request to collection
 app.post('/api/collections/request', (req, res) => {
   try {
-    let data = [];
-    const filePath = getCollectionsPath();
-    try {
-      if (fs.existsSync(filePath)) data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (!Array.isArray(data)) data = [];
-    } catch (_) {
-      data = [];
-    }
+    let data = readCollections();
     if (!Array.isArray(data)) data = [];
 
     const { collectionIndex = 0, folderIndex, request: newReq } = req.body;
@@ -920,8 +1067,7 @@ app.post('/api/collections/request', (req, res) => {
       id,
     };
     reqList.push(reqObj);
-    const savePath = fs.existsSync(getCollectionsPath()) ? getCollectionsPath() : COLLECTIONS_PATH;
-    fs.writeFileSync(savePath, JSON.stringify(data, null, 2), 'utf8');
+    writeCollections(data);
     const flat = flattenRequests(data);
     res.json({ ok: true, id, flat, collections: data });
   } catch (err) {
