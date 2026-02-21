@@ -866,6 +866,25 @@
     .report-findings li::before { content: '•'; position: absolute; left: 0; color: var(--accent); font-weight: bold; }
     .report-findings li.fail { color: var(--danger); }
     .report-findings li.fail::before { color: var(--danger); }
+    .auth-workspace-bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+    .auth-workspace-bar .auth-logged { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+    .auth-workspace-bar .workspace-select { min-width: 140px; padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 0.8125rem; }
+    .auth-workspace-bar .user-email { font-size: 0.8125rem; color: var(--text-muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: 24px; min-width: 280px; max-width: 400px; position: relative; }
+    .modal-box .modal-close { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; padding: 4px; }
+    .modal-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .modal-tab { padding: 8px 16px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; border-radius: var(--radius); }
+    .modal-tab.active { background: var(--accent-muted); color: var(--accent); }
+    .modal-input { width: 100%; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 0.9375rem; box-sizing: border-box; }
+    .auth-error { color: var(--danger); font-size: 0.875rem; margin-bottom: 8px; min-height: 20px; }
+    .share-title { margin: 0 0 8px 0; font-size: 1rem; }
+    .share-desc { font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 12px; }
+    .share-members-list { list-style: none; margin: 12px 0 0 0; padding: 0; font-size: 0.875rem; }
+    .share-members-list li { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .modal-actions { display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-4); }
+    .btn-danger-outline { color: var(--danger); border-color: var(--danger); }
+    .btn-danger-outline:hover { background: var(--danger-muted); }
     @media print {
       body * { visibility: hidden; }
       .report, .report * { visibility: visible; }
@@ -1087,7 +1106,68 @@
           <div id="collectionVarsList" class="collection-vars-list"></div>
         </div>
       </div>
+      <div class="auth-workspace-bar" id="authWorkspaceBar">
+        <div class="auth-guest" id="authGuest">
+          <button type="button" class="btn btn-ghost btn-sm" id="loginBtn">Login</button>
+          <button type="button" class="btn btn-run btn-sm" id="registerBtn">Register</button>
+        </div>
+        <div class="auth-logged" id="authLogged" style="display:none;">
+          <select class="workspace-select" id="workspaceSelect" title="Current workspace (Personal = local data)">
+            <option value="">Personal workspace</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" id="addWorkspaceBtn" title="Add workspace">+ Workspace</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="shareWorkspaceBtn" title="Share this workspace">Share</button>
+          <button type="button" class="btn btn-ghost btn-sm btn-danger-outline" id="deleteWorkspaceBtn" title="Delete this workspace (owner only)" style="display:none;">Delete workspace</button>
+          <span class="user-email" id="userEmail"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="logoutBtn">Logout</button>
+        </div>
+      </div>
     </header>
+    <div class="modal-overlay" id="authModalOverlay" style="display:none;">
+      <div class="modal-box auth-modal" id="authModal">
+        <div class="modal-tabs">
+          <button type="button" class="modal-tab active" data-tab="login">Login</button>
+          <button type="button" class="modal-tab" data-tab="register">Register</button>
+        </div>
+        <div class="modal-panel" id="loginPanel">
+          <input type="email" id="loginEmail" placeholder="Email" class="modal-input" />
+          <input type="password" id="loginPassword" placeholder="Password" class="modal-input" />
+          <p class="auth-error" id="loginError"></p>
+          <button type="button" class="btn btn-run" id="loginSubmitBtn">Login</button>
+        </div>
+        <div class="modal-panel" id="registerPanel" style="display:none;">
+          <input type="text" id="registerName" placeholder="Name (optional)" class="modal-input" />
+          <input type="email" id="registerEmail" placeholder="Email" class="modal-input" />
+          <input type="password" id="registerPassword" placeholder="Password (min 6)" class="modal-input" />
+          <p class="auth-error" id="registerError"></p>
+          <button type="button" class="btn btn-run" id="registerSubmitBtn">Register</button>
+        </div>
+        <button type="button" class="modal-close" id="authModalClose">✕</button>
+      </div>
+    </div>
+    <div class="modal-overlay" id="newWorkspaceModalOverlay" style="display:none;">
+      <div class="modal-box new-workspace-modal" id="newWorkspaceModal">
+        <h3 class="share-title">Create workspace</h3>
+        <p class="share-desc">Enter a name for your new workspace. You can add collections and requests after.</p>
+        <input type="text" id="newWorkspaceName" placeholder="e.g. My Project, QA APIs" class="modal-input" maxlength="120" autocomplete="off" />
+        <p class="auth-error" id="newWorkspaceError"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="newWorkspaceCancelBtn">Cancel</button>
+          <button type="button" class="btn btn-run" id="newWorkspaceCreateBtn">Create</button>
+        </div>
+        <button type="button" class="modal-close" id="newWorkspaceModalClose">✕</button>
+      </div>
+    </div>
+    <div class="modal-overlay" id="shareModalOverlay" style="display:none;">
+      <div class="modal-box share-modal" id="shareModal">
+        <h3 class="share-title">Share workspace</h3>
+        <p class="share-desc">Invite by email. User must have an account (register first).</p>
+        <input type="email" id="shareEmail" placeholder="Email to invite" class="modal-input" />
+        <button type="button" class="btn btn-run" id="shareInviteBtn">Invite</button>
+        <ul class="share-members-list" id="shareMembersList"></ul>
+        <button type="button" class="modal-close" id="shareModalClose">✕</button>
+      </div>
+    </div>
 
     <aside class="left-bar">
       <button type="button" class="icon-btn active" title="Request">◇</button>
@@ -1237,6 +1317,12 @@
     let lastAuthFormData = null;
     let openTabs = [];
     let loadTestUserData = [];
+    const AUTH_TOKEN_KEY = 'postmeter_token';
+    const WORKSPACE_KEY = 'postmeter_workspace';
+    let currentUser = null;
+    let currentWorkspaceId = null;
+    let workspacesList = [];
+    let skipWorkspaceChangeHandler = false;
 
     function parseCSV(text) {
       const lines = (text || '').trim().split(/\r?\n/).filter(Boolean);
@@ -1398,12 +1484,12 @@
         const { res, data: result } = await fetchJson('/api/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(withWorkspaceBody({
             requestId: id,
             baseUrl,
             bearerToken: token || undefined,
             collectionVariables: collVars,
-          }),
+          })),
         });
         if (!res.ok) throw new Error(result.error || 'Send failed');
         resStatus.textContent = result.statusCode + (result.statusCode ? ' ' + (result.success ? 'OK' : 'Error') : '');
@@ -1520,8 +1606,29 @@
       statusMsg.textContent = msg;
       statusMsg.className = 'status-msg ' + type;
     }
+    function getAuthHeader() {
+      try {
+        const t = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (t) return { Authorization: 'Bearer ' + t };
+      } catch (_) {}
+      return {};
+    }
+    function getWorkspaceId() {
+      return currentWorkspaceId != null ? currentWorkspaceId : null;
+    }
+    function withWorkspaceBody(body) {
+      const wid = getWorkspaceId();
+      if (wid == null || body == null) return body;
+      return { ...body, workspaceId: wid };
+    }
+    function withWorkspaceUrl(url) {
+      const wid = getWorkspaceId();
+      if (wid == null) return url;
+      return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'workspaceId=' + encodeURIComponent(wid);
+    }
     async function fetchJson(url, opts) {
-      const res = await fetch(url, opts);
+      const headers = { ...getAuthHeader(), ...(opts && opts.headers) };
+      const res = await fetch(url, { ...opts, headers });
       const text = await res.text();
       const trim = (text || '').trim();
       if (trim.startsWith('<')) {
@@ -1801,7 +1908,7 @@
           html += '</div></div>';
         });
       }
-      treeEl.innerHTML = html || '<div class="tree-item" style="color:var(--textMuted);padding:12px;">No collections – click <strong>+ Collection</strong> or <strong>Import</strong></div>';
+      treeEl.innerHTML = html || '<div class="tree-item" style="color:var(--textMuted);padding:12px;">No collections – click <strong>+ Collection</strong>, <strong>+ Request</strong>, or <strong>Import</strong></div>';
 
       treeEl.querySelectorAll('.tree-folder').forEach(el => {
         el.addEventListener('click', (e) => {
@@ -1904,7 +2011,7 @@
             input.remove();
             span.textContent = newName;
             try {
-              const { res, data } = await fetchJson(`/api/collections/${colIndex}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) });
+              const { res, data } = await fetchJson(`/api/collections/${colIndex}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ name: newName })) });
               if (!res.ok) throw new Error(data.error || 'Rename failed');
               collections = data.collections || [];
               flat = data.flat || [];
@@ -1948,7 +2055,7 @@
               const payload = getRequestFromEditor();
               if (currentRequestId === id) payload.name = newName;
               else payload.name = newName;
-              const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: { name: newName } }) });
+              const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ request: { name: newName } })) });
               if (!res.ok) throw new Error(data.error || 'Rename failed');
               flat = data.flat || [];
               collections = data.collections || [];
@@ -1969,7 +2076,7 @@
           const col = collections[parseInt(idx, 10)];
           if (!col || !confirm(`Delete collection "${col.name || 'Collection'}"? All requests inside will be removed.`)) return;
           try {
-            const { res, data } = await fetchJson(`/api/collections/${idx}`, { method: 'DELETE' });
+            const { res, data } = await fetchJson(withWorkspaceUrl(`/api/collections/${idx}`), { method: 'DELETE' });
             if (!res.ok) throw new Error(data.error || 'Delete failed');
             flat = data.flat || []; collections = data.collections || [];
             openTabs = openTabs.filter(x => flat.some(i => i.id === x));
@@ -1985,7 +2092,7 @@
           const id = btn.getAttribute('data-id');
             if (!id || !confirm('Delete this request?')) return;
           try {
-            const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const { res, data } = await fetchJson(withWorkspaceUrl(`/api/collections/request/${encodeURIComponent(id)}`), { method: 'DELETE' });
             if (!res.ok) throw new Error(data.error || 'Delete failed');
             flat = data.flat || []; collections = data.collections || [];
             openTabs = openTabs.filter(x => x !== id);
@@ -2005,7 +2112,7 @@
           const id = btn.getAttribute('data-id');
           if (!id) return;
           try {
-            const { res, data } = await fetchJson('/api/collections/request/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: id }) });
+            const { res, data } = await fetchJson('/api/collections/request/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ requestId: id })) });
             if (!res.ok) throw new Error(data.error || 'Duplicate failed');
             flat = data.flat || []; collections = data.collections || [];
             const newId = data.id;
@@ -2034,13 +2141,73 @@
       });
       return list;
     }
+    function syncWorkspaceFromDropdown() {
+      const wsSelect = document.getElementById('workspaceSelect');
+      if (!wsSelect) return;
+      const v = wsSelect.value;
+      const nextId = v ? parseInt(v, 10) : null;
+      if (v === '' || v === undefined) {
+        currentWorkspaceId = null;
+        return;
+      }
+      if (nextId != null && (!currentUser || workspacesList.some((w) => w.id === nextId))) {
+        currentWorkspaceId = nextId;
+        return;
+      }
+      if (currentUser && workspacesList.length && currentWorkspaceId != null && !workspacesList.some((w) => w.id === currentWorkspaceId)) {
+        currentWorkspaceId = workspacesList[0].id;
+        wsSelect.value = String(currentWorkspaceId);
+        try { localStorage.setItem(WORKSPACE_KEY, String(currentWorkspaceId)); } catch (_) {}
+      }
+    }
     async function loadCollections() {
       setStatus('Loading collections…');
       try {
-        const { res, data } = await fetchJson('/api/collections');
+        const wsSelect = document.getElementById('workspaceSelect');
+        const selectedValue = wsSelect ? (wsSelect.value ?? '') : '';
+        const wid = (selectedValue !== '' && selectedValue != null) ? parseInt(selectedValue, 10) : null;
+        const requestedWorkspaceId = (wid != null && !isNaN(wid)) ? wid : null;
+        syncWorkspaceFromDropdown();
+        if (requestedWorkspaceId != null) currentWorkspaceId = requestedWorkspaceId;
+        else if (selectedValue === '' || selectedValue == null) currentWorkspaceId = null;
+        if (requestedWorkspaceId != null) {
+          flat = [];
+          collections = [];
+          currentRequestId = null;
+          openTabs = [];
+          selectedIds.clear();
+          if (editorMethod) editorMethod.value = 'GET';
+          if (editorUrl) editorUrl.value = '<<baseUrl>>/';
+          document.getElementById('resStatus').textContent = '–';
+          document.getElementById('resTime').textContent = '';
+          var rb = document.getElementById('resBody');
+          if (rb) rb.textContent = 'Send a request to see response.';
+          renderTree();
+          renderRequestTabs();
+        }
+        const url = requestedWorkspaceId != null ? '/api/collections?workspaceId=' + encodeURIComponent(requestedWorkspaceId) : '/api/collections';
+        const { res, data } = await fetchJson(url);
         if (!res.ok) throw new Error(data.error || 'Failed to load');
+        var nowSelected = wsSelect ? (wsSelect.value ?? '') : '';
+        var nowWid = (nowSelected !== '' && nowSelected != null) ? parseInt(nowSelected, 10) : null;
+        if (requestedWorkspaceId !== nowWid) { loadCollections(); return; }
         flat = data.flat || [];
         collections = Array.isArray(data.collections) ? data.collections : [];
+        currentCollectionIndex = collections.length ? Math.min(currentCollectionIndex, collections.length - 1) : 0;
+        currentRequestCollectionName = collections[currentCollectionIndex] ? (collections[currentCollectionIndex].name || '') : '';
+        const currentRequestInThisWorkspace = currentRequestId && flat.some((r) => r.id === currentRequestId);
+        if (!currentRequestInThisWorkspace) {
+          currentRequestId = null;
+          openTabs = openTabs.filter((id) => flat.some((r) => r.id === id));
+          selectedIds.clear();
+          if (editorMethod) editorMethod.value = 'GET';
+          if (editorUrl) editorUrl.value = '<<baseUrl>>/';
+          document.getElementById('resStatus').textContent = '–';
+          document.getElementById('resTime').textContent = '';
+          const resBody = document.getElementById('resBody');
+          if (resBody) resBody.textContent = 'Send a request to see response.';
+        }
+        if (collections.length === 0) selectedIds.clear();
         loadSavedPrefs();
         if (data.env) {
           if (data.env.baseUrl != null && data.env.baseUrl !== '') { baseUrlEl.value = data.env.baseUrl; try { localStorage.setItem(STORAGE_BASE, data.env.baseUrl); } catch (_) {} }
@@ -2051,19 +2218,30 @@
         if (mode === 'single' && flat.length && selectedIds.size === 0) selectedIds.add(flat[0].id);
         renderTree();
         renderCollectionVars();
+        renderRequestTabs();
         if (mode === 'single' && flat.length) {
           const firstId = [...selectedIds][0] || flat[0].id;
           const item = flat.find(i => i.id === firstId);
           if (item) loadRequestIntoEditor(item);
+        } else if (flat.length === 0) {
+          document.getElementById('resStatus').textContent = '–';
+          document.getElementById('resTime').textContent = '';
+          document.getElementById('resBody').textContent = 'Send a request to see response.';
         }
-        setStatus(`Loaded ${flat.length} APIs`);
+        setStatus(collections.length ? `Loaded ${flat.length} APIs` : 'No collections – click + Collection or + Request');
+        if (typeof updateDeleteWorkspaceButton === 'function') updateDeleteWorkspaceButton();
       } catch (e) {
         if (typeof showServerRequiredBanner === 'function') showServerRequiredBanner();
         setStatus('Error: ' + e.message, 'error');
         flat = [];
         collections = [];
+        currentCollectionIndex = 0;
+        currentRequestId = null;
+        openTabs = [];
+        selectedIds.clear();
         loadSavedPrefs();
         renderTree();
+        renderRequestTabs();
       }
     }
 
@@ -2085,9 +2263,21 @@
     bearerTokenEl.addEventListener('blur', saveToken);
     baseUrlEl.addEventListener('blur', saveBaseUrl);
 
-    document.getElementById('exportBtnCol').addEventListener('click', () => {
-      window.open('/api/collections/export', '_blank');
-      setStatus('Export started');
+    document.getElementById('exportBtnCol').addEventListener('click', async () => {
+      try {
+        const url = withWorkspaceUrl('/api/collections/export');
+        const res = await fetch(url, { headers: getAuthHeader() });
+        if (!res.ok) throw new Error('Export failed');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'collection.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        setStatus('Export started');
+      } catch (e) {
+        setStatus('Export error: ' + e.message, 'error');
+      }
     });
 
     (function initSidebarResizeAndExpand() {
@@ -2171,7 +2361,7 @@
           const idx = parseInt(colIdx, 10);
           if (btn.dataset.action === 'delete') {
             if (!confirm('Delete collection "' + (col.name || 'Collection') + '"?')) return;
-            fetchJson('/api/collections/' + idx, { method: 'DELETE' }).then(({ res, data }) => {
+            fetchJson(withWorkspaceUrl('/api/collections/' + idx), { method: 'DELETE' }).then(({ res, data }) => {
               if (!res.ok) throw new Error(data.error || 'Delete failed');
               flat = data.flat || []; collections = data.collections || [];
               openTabs = openTabs.filter(x => flat.some(i => i.id === x));
@@ -2183,7 +2373,7 @@
           } else if (btn.dataset.action === 'add') {
             setStatus('Adding request…');
             const newReq = { name: 'New Request', method: 'GET', endpoint: '<<baseUrl>>/api/', params: [], headers: [], body: { body: null, contentType: null } };
-            fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collectionIndex: idx, folderIndex: null, request: newReq }) }).then(({ res, data }) => {
+            fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ collectionIndex: idx, folderIndex: null, request: newReq })) }).then(({ res, data }) => {
               if (!res.ok) throw new Error(data.error || 'Add failed');
               flat = data.flat || []; collections = data.collections || [];
               const newId = data.id;
@@ -2198,23 +2388,27 @@
     })();
 
     document.getElementById('newCollectionBtn').addEventListener('click', async () => {
+      syncWorkspaceFromDropdown();
       try {
-        const { res, data } = await fetchJson('/api/collections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New Collection' }) });
+        const { res, data } = await fetchJson('/api/collections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ name: 'New Collection' })) });
         if (!res.ok) throw new Error(data.error || 'Failed');
-        flat = data.flat || []; collections = data.collections || [];
-        const newCol = collections[collections.length - 1];
-        if (newCol && newCol.name) {
-          expandedPaths.add(newCol.name);
-          currentCollectionIndex = collections.length - 1;
-          currentRequestCollectionName = newCol.name;
-        }
-        renderTree(); renderCollectionVars();
-        setStatus('Collection added – click "+ Request" on it or use header + Request to add APIs', 'success');
-      } catch (err) { setStatus(err.message, 'error'); }
+        flat = data.flat || [];
+        collections = Array.isArray(data.collections) ? data.collections : [];
+        currentCollectionIndex = collections.length ? collections.length - 1 : 0;
+        const newCol = collections[currentCollectionIndex];
+        currentRequestCollectionName = newCol ? (newCol.name || '') : '';
+        if (newCol && newCol.name) expandedPaths.add(newCol.name);
+        renderTree();
+        renderCollectionVars();
+        renderRequestTabs();
+        setStatus('Collection added – click "+ Request" or add requests in the tree', 'success');
+      } catch (err) { setStatus(err.message || 'Failed to add collection', 'error'); }
     });
 
     document.getElementById('newRequestBtn').addEventListener('click', () => {
+      syncWorkspaceFromDropdown();
       currentRequestId = null;
+      openTabs = [];
       lastAuthFormData = { authType: 'inherit', token: '', authActive: true, apikeyKey: '', apikeyValue: '', apikeyAddTo: 'header', basicUser: '', basicPass: '' };
       if (currentCollectionIndex < 0 || currentCollectionIndex >= collections.length) currentCollectionIndex = collections.length ? 0 : 0;
       currentFolderIndex = null;
@@ -2233,22 +2427,28 @@
           }
         }
       }
-      setStatus('New request – edit and click Save to add to ' + (currentRequestCollectionName || 'collection'));
+      document.getElementById('resStatus').textContent = '–';
+      document.getElementById('resTime').textContent = '';
+      var resBodyEl = document.getElementById('resBody');
+      if (resBodyEl) resBodyEl.textContent = 'Send a request to see response.';
+      renderRequestTabs();
+      setStatus(collections.length ? 'New request – edit and click Save to add to ' + (currentRequestCollectionName || 'collection') : 'New request – edit and click Save (a collection will be created)');
     });
 
     document.getElementById('saveRequestBtn').addEventListener('click', async () => {
+      syncWorkspaceFromDropdown();
       const payload = getRequestFromEditor();
       if (!payload.name) payload.name = 'Untitled request';
       try {
         if (currentRequestId) {
-          const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(currentRequestId)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: payload }) });
+          const { res, data } = await fetchJson(`/api/collections/request/${encodeURIComponent(currentRequestId)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ request: payload })) });
           if (!res.ok) throw new Error(data.error || 'Save failed');
           flat = data.flat || []; collections = data.collections || [];
           renderTree(); renderCollectionVars();
           setStatus('Request saved', 'success');
         } else {
           const colIdx = Math.max(0, currentCollectionIndex);
-          const { res, data } = await fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collectionIndex: colIdx, folderIndex: currentFolderIndex, request: payload }) });
+          const { res, data } = await fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ collectionIndex: colIdx, folderIndex: currentFolderIndex, request: payload })) });
           if (!res.ok) throw new Error(data.error || 'Add failed');
           flat = data.flat || []; collections = data.collections || [];
           const newId = data.id;
@@ -2262,7 +2462,7 @@
     document.getElementById('duplicateRequestBtn').addEventListener('click', async () => {
       if (!currentRequestId) { setStatus('Select a request to duplicate', 'error'); return; }
       try {
-        const { res, data } = await fetchJson('/api/collections/request/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: currentRequestId }) });
+        const { res, data } = await fetchJson('/api/collections/request/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ requestId: currentRequestId })) });
         if (!res.ok) throw new Error(data.error || 'Duplicate failed');
         flat = data.flat || []; collections = data.collections || [];
         const newId = data.id;
@@ -2288,7 +2488,8 @@
         });
         const json = JSON.parse(text);
         if (typeof json !== 'object') throw new Error('Invalid JSON');
-        const { res, data } = await fetchJson('/api/collections/upload', {
+        const uploadUrl = withWorkspaceUrl('/api/collections/upload');
+        const { res, data } = await fetchJson(uploadUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(json),
@@ -2348,12 +2549,12 @@
           const { res, data: result } = await fetchJson('/api/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(withWorkspaceBody({
               requestId: id,
               baseUrl,
               bearerToken: bearerTokenEl.value.trim() || undefined,
               collectionVariables: collVars,
-            }),
+            })),
           });
           const statusCode = result.statusCode != null ? result.statusCode : (res.ok ? 200 : 0);
           const success = result.success !== false && statusCode >= 200 && statusCode < 300;
@@ -2457,9 +2658,11 @@
             globalVariables: {},
             stream: true,
           };
+          const wid = getWorkspaceId();
+          if (wid != null) payload.workspaceId = wid;
           const res = await fetch('/api/run', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
             signal: runAbort.signal,
             body: JSON.stringify(payload),
           });
@@ -3024,8 +3227,271 @@
       window.print();
     });
 
+    async function initAuth() {
+      const guestEl = document.getElementById('authGuest');
+      const loggedEl = document.getElementById('authLogged');
+      const wsSelect = document.getElementById('workspaceSelect');
+      const userEmailEl = document.getElementById('userEmail');
+      try {
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (!token) { if (guestEl) guestEl.style.display = ''; if (loggedEl) loggedEl.style.display = 'none'; return; }
+        const { res, data: me } = await fetchJson('/api/auth/me');
+        if (!res.ok) { localStorage.removeItem(AUTH_TOKEN_KEY); if (guestEl) guestEl.style.display = ''; if (loggedEl) loggedEl.style.display = 'none'; return; }
+        currentUser = me;
+        const { data: wsData } = await fetchJson('/api/workspaces');
+        workspacesList = (wsData && wsData.workspaces) ? wsData.workspaces : [];
+        if (guestEl) guestEl.style.display = 'none';
+        if (loggedEl) loggedEl.style.display = 'flex';
+        if (userEmailEl) userEmailEl.textContent = currentUser.email || '';
+        if (wsSelect) {
+          skipWorkspaceChangeHandler = true;
+          wsSelect.innerHTML = '<option value="">Personal workspace</option>' + workspacesList.map((w) => '<option value="' + w.id + '" ' + (w.role === 'owner' ? '' : '') + '>' + escapeHtml(w.name || 'Workspace') + (w.role === 'owner' ? ' (owner)' : '') + '</option>').join('');
+          const saved = localStorage.getItem(WORKSPACE_KEY);
+          const id = saved && workspacesList.some((w) => String(w.id) === saved) ? saved : (workspacesList[0] ? String(workspacesList[0].id) : '');
+          currentWorkspaceId = id ? parseInt(id, 10) : null;
+          if (wsSelect.value !== id) wsSelect.value = id || '';
+          try { localStorage.setItem(WORKSPACE_KEY, id || ''); } catch (_) {}
+          skipWorkspaceChangeHandler = false;
+        }
+        if (typeof updateDeleteWorkspaceButton === 'function') updateDeleteWorkspaceButton();
+      } catch (_) {
+        if (guestEl) guestEl.style.display = '';
+        if (loggedEl) loggedEl.style.display = 'none';
+      }
+    }
+    function updateAuthUI() {
+      const loggedEl = document.getElementById('authLogged');
+      const guestEl = document.getElementById('authGuest');
+      if (currentUser) { if (guestEl) guestEl.style.display = 'none'; if (loggedEl) loggedEl.style.display = 'flex'; }
+      else { if (loggedEl) loggedEl.style.display = 'none'; if (guestEl) guestEl.style.display = ''; }
+    }
+    (function bindAuthModals() {
+      const overlay = document.getElementById('authModalOverlay');
+      const loginPanel = document.getElementById('loginPanel');
+      const registerPanel = document.getElementById('registerPanel');
+      const loginError = document.getElementById('loginError');
+      const registerError = document.getElementById('registerError');
+      document.querySelectorAll('.modal-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const t = tab.dataset.tab;
+          document.querySelectorAll('.modal-tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === t));
+          if (loginPanel) loginPanel.style.display = t === 'login' ? 'block' : 'none';
+          if (registerPanel) registerPanel.style.display = t === 'register' ? 'block' : 'none';
+          if (loginError) loginError.textContent = '';
+          if (registerError) registerError.textContent = '';
+        });
+      });
+      document.getElementById('loginBtn').addEventListener('click', () => { if (overlay) overlay.style.display = 'flex'; });
+      document.getElementById('registerBtn').addEventListener('click', () => { document.querySelector('.modal-tab[data-tab="register"]').click(); if (overlay) overlay.style.display = 'flex'; });
+      document.getElementById('authModalClose').addEventListener('click', () => { if (overlay) overlay.style.display = 'none'; });
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+      document.getElementById('loginSubmitBtn').addEventListener('click', async () => {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        if (loginError) loginError.textContent = '';
+        if (!email || !password) { if (loginError) loginError.textContent = 'Email and password required'; return; }
+        try {
+          const { res, data } = await fetchJson('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+          if (!res.ok) throw new Error(data.error || 'Login failed');
+          localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+          currentUser = data.user;
+          const { data: wsData } = await fetchJson('/api/workspaces');
+          workspacesList = (wsData && wsData.workspaces) ? wsData.workspaces : [];
+          const wsSelect = document.getElementById('workspaceSelect');
+          if (wsSelect && workspacesList.length) {
+            skipWorkspaceChangeHandler = true;
+            wsSelect.innerHTML = '<option value="">Personal workspace</option>' + workspacesList.map((w) => '<option value="' + w.id + '">' + escapeHtml(w.name || 'Workspace') + (w.role === 'owner' ? ' (owner)' : '') + '</option>').join('');
+            currentWorkspaceId = workspacesList[0].id;
+            wsSelect.value = String(currentWorkspaceId);
+            try { localStorage.setItem(WORKSPACE_KEY, String(currentWorkspaceId)); } catch (_) {}
+            skipWorkspaceChangeHandler = false;
+          }
+          updateAuthUI();
+          document.getElementById('userEmail').textContent = currentUser.email || '';
+          overlay.style.display = 'none';
+          await loadCollections();
+          setStatus('Logged in. Data saved to your account.', 'success');
+        } catch (e) {
+          if (loginError) loginError.textContent = e.message || 'Login failed';
+        }
+      });
+      document.getElementById('registerSubmitBtn').addEventListener('click', async () => {
+        const name = document.getElementById('registerName').value.trim();
+        const email = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+        if (registerError) registerError.textContent = '';
+        if (!email || !password) { if (registerError) registerError.textContent = 'Email and password required'; return; }
+        if (password.length < 6) { if (registerError) registerError.textContent = 'Password min 6 characters'; return; }
+        try {
+          const { res, data } = await fetchJson('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name: name || undefined }) });
+          if (!res.ok) throw new Error(data.error || 'Registration failed');
+          localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+          currentUser = data.user;
+          const { data: wsData } = await fetchJson('/api/workspaces');
+          workspacesList = (wsData && wsData.workspaces) ? wsData.workspaces : [];
+          const wsSelect = document.getElementById('workspaceSelect');
+          if (wsSelect && workspacesList.length) {
+            skipWorkspaceChangeHandler = true;
+            wsSelect.innerHTML = '<option value="">Personal workspace</option>' + workspacesList.map((w) => '<option value="' + w.id + '">' + escapeHtml(w.name || 'Workspace') + (w.role === 'owner' ? ' (owner)' : '') + '</option>').join('');
+            currentWorkspaceId = workspacesList[0].id;
+            wsSelect.value = String(currentWorkspaceId);
+            try { localStorage.setItem(WORKSPACE_KEY, String(currentWorkspaceId)); } catch (_) {}
+            skipWorkspaceChangeHandler = false;
+          }
+          updateAuthUI();
+          document.getElementById('userEmail').textContent = currentUser.email || '';
+          overlay.style.display = 'none';
+          await loadCollections();
+          setStatus('Account created. Data saved to your workspace.', 'success');
+        } catch (e) {
+          if (registerError) registerError.textContent = e.message || 'Registration failed';
+        }
+      });
+    })();
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      currentUser = null;
+      currentWorkspaceId = null;
+      workspacesList = [];
+      updateAuthUI();
+      loadCollections();
+      setStatus('Logged out. Using local data.');
+    });
+    document.getElementById('workspaceSelect').addEventListener('change', function() {
+      if (skipWorkspaceChangeHandler) return;
+      const v = this.value;
+      const nextId = v ? parseInt(v, 10) : null;
+      if (nextId === currentWorkspaceId) return;
+      currentWorkspaceId = nextId;
+      try { localStorage.setItem(WORKSPACE_KEY, v || ''); } catch (_) {}
+      loadCollections();
+    });
+    (function bindNewWorkspaceModal() {
+      const overlay = document.getElementById('newWorkspaceModalOverlay');
+      const nameInput = document.getElementById('newWorkspaceName');
+      const errorEl = document.getElementById('newWorkspaceError');
+      function hide() {
+        if (overlay) overlay.style.display = 'none';
+        if (errorEl) errorEl.textContent = '';
+      }
+      function show() {
+        if (nameInput) { nameInput.value = ''; nameInput.focus(); }
+        if (errorEl) errorEl.textContent = '';
+        if (overlay) overlay.style.display = 'flex';
+      }
+      document.getElementById('addWorkspaceBtn').addEventListener('click', () => {
+        if (!currentUser) { setStatus('Login to create a workspace', 'error'); return; }
+        show();
+      });
+      document.getElementById('newWorkspaceCancelBtn').addEventListener('click', hide);
+      document.getElementById('newWorkspaceModalClose').addEventListener('click', hide);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) hide(); });
+      if (nameInput) nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('newWorkspaceCreateBtn').click(); }
+      });
+      document.getElementById('newWorkspaceCreateBtn').addEventListener('click', async () => {
+        const raw = nameInput && nameInput.value ? nameInput.value.trim() : '';
+        const name = raw || 'New Workspace';
+        if (errorEl) errorEl.textContent = '';
+        try {
+          const { res, data } = await fetchJson('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          if (!res.ok) throw new Error(data.error || 'Failed to create workspace');
+          workspacesList.push({ ...data, role: 'owner' });
+          const wsSelect = document.getElementById('workspaceSelect');
+          if (wsSelect) {
+            skipWorkspaceChangeHandler = true;
+            wsSelect.innerHTML = '<option value="">Personal workspace</option>' + workspacesList.map((w) => '<option value="' + w.id + '">' + escapeHtml(w.name || 'Workspace') + (w.role === 'owner' ? ' (owner)' : '') + '</option>').join('');
+            currentWorkspaceId = data.id;
+            wsSelect.value = String(data.id);
+            try { localStorage.setItem(WORKSPACE_KEY, String(currentWorkspaceId)); } catch (_) {}
+            skipWorkspaceChangeHandler = false;
+          }
+          hide();
+          await loadCollections();
+          setStatus('Workspace "' + (data.name || name) + '" created – add a Collection or Request', 'success');
+        } catch (e) {
+          if (errorEl) errorEl.textContent = e.message || 'Failed';
+          setStatus(e.message, 'error');
+        }
+      });
+    })();
+    (function bindShareModal() {
+      const overlay = document.getElementById('shareModalOverlay');
+      const listEl = document.getElementById('shareMembersList');
+      const emailInput = document.getElementById('shareEmail');
+      document.getElementById('shareWorkspaceBtn').addEventListener('click', async () => {
+        if (!currentWorkspaceId) { setStatus('Select a workspace first', 'error'); return; }
+        overlay.style.display = 'flex';
+        listEl.innerHTML = 'Loading…';
+        try {
+          const { data } = await fetchJson('/api/workspaces/' + currentWorkspaceId + '/members');
+          const members = (data && data.members) ? data.members : [];
+          listEl.innerHTML = members.length ? members.map((m) => '<li><span>' + escapeHtml(m.email) + '</span> <span class="role">' + (m.role || 'member') + '</span></li>').join('') : '<li class="muted">No members yet</li>';
+        } catch (_) {
+          listEl.innerHTML = '<li class="muted">Failed to load</li>';
+        }
+      });
+      document.getElementById('shareInviteBtn').addEventListener('click', async () => {
+        const email = (emailInput && emailInput.value) ? emailInput.value.trim().toLowerCase() : '';
+        if (!email) { setStatus('Enter email', 'error'); return; }
+        try {
+          const { res, data } = await fetchJson('/api/workspaces/' + currentWorkspaceId + '/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+          if (!res.ok) throw new Error(data.error || 'Invite failed');
+          emailInput.value = '';
+          const { data: d2 } = await fetchJson('/api/workspaces/' + currentWorkspaceId + '/members');
+          const members = (d2 && d2.members) ? d2.members : [];
+          listEl.innerHTML = members.map((m) => '<li><span>' + escapeHtml(m.email) + '</span> <span class="role">' + (m.role || 'member') + '</span></li>').join('');
+          setStatus('Invited ' + email, 'success');
+        } catch (e) {
+          setStatus(e.message, 'error');
+        }
+      });
+      document.getElementById('shareModalClose').addEventListener('click', () => { overlay.style.display = 'none'; });
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+    })();
+    function updateDeleteWorkspaceButton() {
+      const btn = document.getElementById('deleteWorkspaceBtn');
+      if (!btn) return;
+      const isOwner = currentWorkspaceId != null && workspacesList.some((w) => w.id === currentWorkspaceId && w.role === 'owner');
+      btn.style.display = currentUser && isOwner ? '' : 'none';
+    }
+    document.getElementById('deleteWorkspaceBtn').addEventListener('click', async () => {
+      if (!currentUser || !currentWorkspaceId) return;
+      const w = workspacesList.find((x) => x.id === currentWorkspaceId);
+      if (!w || w.role !== 'owner') { setStatus('Only owner can delete this workspace', 'error'); return; }
+      if (!confirm('Delete workspace "' + (w.name || '') + '" and all its collections? This cannot be undone.')) return;
+      try {
+        const { res, data } = await fetchJson('/api/workspaces/' + currentWorkspaceId, { method: 'DELETE' });
+        if (!res.ok) throw new Error(data.error || 'Delete failed');
+        workspacesList = workspacesList.filter((x) => x.id !== currentWorkspaceId);
+        const wsSelect = document.getElementById('workspaceSelect');
+        const next = workspacesList[0];
+        if (wsSelect) {
+          skipWorkspaceChangeHandler = true;
+          wsSelect.innerHTML = '<option value="">Personal workspace</option>' + workspacesList.map((w) => '<option value="' + w.id + '">' + escapeHtml(w.name || 'Workspace') + (w.role === 'owner' ? ' (owner)' : '') + '</option>').join('');
+          if (next) {
+            currentWorkspaceId = next.id;
+            wsSelect.value = String(next.id);
+            try { localStorage.setItem(WORKSPACE_KEY, String(currentWorkspaceId)); } catch (_) {}
+          } else {
+            currentWorkspaceId = null;
+            wsSelect.value = '';
+          }
+          skipWorkspaceChangeHandler = false;
+        }
+        updateDeleteWorkspaceButton();
+        await loadCollections();
+        setStatus(next ? 'Workspace deleted. Switched to ' + (next.name || '') : 'Workspace deleted.', 'success');
+      } catch (e) {
+        setStatus(e.message, 'error');
+      }
+    });
+
     loadSavedPrefs();
-    loadCollections();
+    (async function() {
+      await initAuth();
+      loadCollections();
+    })();
   </script>
 </body>
 </html>

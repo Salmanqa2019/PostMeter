@@ -5,10 +5,13 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const axios = require('axios');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3847;
 const IS_VERCEL = process.env.VERCEL === '1';
+const JWT_SECRET = process.env.JWT_SECRET || 'postmeter-dev-secret-change-in-production';
 const MAX_CONCURRENCY = Math.min(500, Math.max(1, parseInt(process.env.MAX_CONCURRENCY, 10) || 200));
 
 // Shared HTTP/HTTPS agents for scalable load testing (reuse connections, limit sockets)
@@ -44,22 +47,27 @@ function getCollectionsPath() {
   return COLLECTIONS_PATH;
 }
 
-function readCollections() {
+function readCollections(workspaceId) {
   const s = getStore();
   if (s && s.useDatabase && s.useDatabase()) {
-    let data = s.getCollections();
+    if (workspaceId != null && workspaceId !== '') {
+      const data = s.getCollections(workspaceId);
+      return Array.isArray(data) ? data : [];
+    }
+    let data = s.getCollections(null);
     if (Array.isArray(data) && data.length > 0) return data;
     const filePath = getCollectionsPath();
     if (fs.existsSync(filePath)) {
       try {
         const raw = fs.readFileSync(filePath, 'utf8');
-        data = JSON.parse(raw);
-        const arr = Array.isArray(data) ? data : (data && data.collections ? data.collections : []);
-        if (arr.length) { s.saveCollections(arr); return arr; }
+        const parsed = JSON.parse(raw);
+        const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.collections ? parsed.collections : []);
+        if (arr.length) { s.saveCollections(arr, null); return arr; }
       } catch (_) {}
     }
     return data || [];
   }
+  if (workspaceId != null && workspaceId !== '') return [];
   const filePath = getCollectionsPath();
   if (IS_VERCEL && !fs.existsSync(COLLECTIONS_PATH)) {
     try { fs.writeFileSync(COLLECTIONS_PATH, JSON.stringify([]), 'utf8'); } catch (_) {}
@@ -74,17 +82,51 @@ function readCollections() {
   return [];
 }
 
-function writeCollections(data) {
+function writeCollections(data, workspaceId) {
   const arr = Array.isArray(data) ? data : [];
   const s = getStore();
   if (s && s.useDatabase && s.useDatabase()) {
-    if (s.saveCollections(arr)) return true;
+    if (s.saveCollections(arr, workspaceId)) return true;
   }
+  if (workspaceId != null) return false;
   const filePath = getCollectionsPath();
   try {
     fs.writeFileSync(fs.existsSync(filePath) ? filePath : COLLECTIONS_PATH, JSON.stringify(arr, null, 2), 'utf8');
     return true;
   } catch (_) { return false; }
+}
+
+// ----- Auth & workspace helpers -----
+app.use((req, res, next) => {
+  const auth = req.headers.authorization;
+  if (auth && typeof auth === 'string' && auth.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(auth.slice(7), JWT_SECRET);
+      const store = getStore();
+      if (store && store.getUserById) req.user = store.getUserById(payload.userId);
+    } catch (_) {}
+  }
+  next();
+});
+
+function assertWorkspaceAccess(req, res) {
+  const wid = req.query.workspaceId ?? req.body?.workspaceId;
+  if (wid == null || wid === '') return undefined;
+  if (!req.user) {
+    res.status(401).json({ error: 'Login required' });
+    return false;
+  }
+  const store = getStore();
+  if (!store || !store.userHasWorkspaceAccess) {
+    res.status(501).json({ error: 'Workspaces not available' });
+    return false;
+  }
+  const id = parseInt(wid, 10);
+  if (isNaN(id) || !store.userHasWorkspaceAccess(req.user.id, id)) {
+    res.status(403).json({ error: 'No access to this workspace' });
+    return false;
+  }
+  return id;
 }
 
 // Convert Postman Collection v2.x to Hoppscotch-style array of collections
@@ -564,10 +606,162 @@ function computeStats(results) {
   };
 }
 
+// ----- Auth -----
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const store = getStore();
+    if (!store || !store.createUser) return res.status(501).json({ error: 'Registration not available' });
+    const { email, password, name } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    const emailStr = String(email).trim().toLowerCase();
+    if (!emailStr) return res.status(400).json({ error: 'Invalid email' });
+    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (store.getUserByEmail(emailStr)) return res.status(409).json({ error: 'Email already registered' });
+    const hash = bcrypt.hashSync(String(password), 10);
+    const userId = store.createUser(emailStr, hash, name);
+    if (!userId) return res.status(500).json({ error: 'Registration failed' });
+    const user = store.getUserById(userId);
+    const defaultWorkspaceId = store.createWorkspace('My Workspace', userId);
+    if (defaultWorkspaceId) store.addWorkspaceMember(defaultWorkspaceId, userId, 'owner');
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ user: { id: user.id, email: user.email, name: user.name }, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const store = getStore();
+    if (!store || !store.getUserByEmail) return res.status(501).json({ error: 'Login not available' });
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    const row = store.getUserByEmail(String(email).trim().toLowerCase());
+    if (!row || !bcrypt.compareSync(String(password), row.password_hash)) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    const user = store.getUserById(row.id);
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ user: { id: user.id, email: user.email, name: user.name }, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Login failed' });
+  }
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  res.json(req.user);
+});
+
+// ----- Workspaces -----
+app.get('/api/workspaces', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  if (!store || !store.getWorkspacesForUser) return res.status(501).json({ error: 'Workspaces not available' });
+  try {
+    const list = store.getWorkspacesForUser(req.user.id);
+    res.json({ workspaces: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workspaces', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  if (!store || !store.createWorkspace) return res.status(501).json({ error: 'Workspaces not available' });
+  const name = (req.body && req.body.name) || 'New Workspace';
+  try {
+    const id = store.createWorkspace(name, req.user.id);
+    if (!id) return res.status(500).json({ error: 'Failed to create workspace' });
+    store.addWorkspaceMember(id, req.user.id, 'owner');
+    const workspace = store.getWorkspaceById(id);
+    res.status(201).json(workspace);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/workspaces/:id', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid workspace id' });
+  if (!store.userHasWorkspaceAccess(req.user.id, id)) return res.status(403).json({ error: 'No access' });
+  const w = store.getWorkspaceById(id);
+  if (!w) return res.status(404).json({ error: 'Workspace not found' });
+  res.json(w);
+});
+
+app.patch('/api/workspaces/:id', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid workspace id' });
+  const w = store.getWorkspaceById(id);
+  if (!w || w.owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner can update' });
+  const name = req.body && req.body.name;
+  if (name != null) store.updateWorkspace(id, name);
+  res.json(store.getWorkspaceById(id));
+});
+
+app.delete('/api/workspaces/:id', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid workspace id' });
+  const w = store.getWorkspaceById(id);
+  if (!w || w.owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner can delete' });
+  store.deleteWorkspace(id);
+  res.json({ ok: true });
+});
+
+app.get('/api/workspaces/:id/members', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid workspace id' });
+  if (!store.userHasWorkspaceAccess(req.user.id, id)) return res.status(403).json({ error: 'No access' });
+  const members = store.getWorkspaceMembers(id);
+  res.json({ members });
+});
+
+app.post('/api/workspaces/:id/members', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid workspace id' });
+  const w = store.getWorkspaceById(id);
+  if (!w || w.owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner can invite' });
+  const email = (req.body && req.body.email) || '';
+  const emailStr = String(email).trim().toLowerCase();
+  if (!emailStr) return res.status(400).json({ error: 'Email required' });
+  const memberUser = store.getUserByEmail(emailStr);
+  if (!memberUser) return res.status(404).json({ error: 'User not found. They must register first.' });
+  if (memberUser.id === req.user.id) return res.status(400).json({ error: 'You are already the owner' });
+  store.addWorkspaceMember(id, memberUser.id, 'member');
+  res.json({ ok: true, member: { id: memberUser.id, email: memberUser.email, name: memberUser.name, role: 'member' } });
+});
+
+app.delete('/api/workspaces/:id/members/:userId', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Login required' });
+  const store = getStore();
+  const wid = parseInt(req.params.id, 10);
+  const uid = parseInt(req.params.userId, 10);
+  if (isNaN(wid) || isNaN(uid)) return res.status(400).json({ error: 'Invalid id' });
+  const w = store.getWorkspaceById(wid);
+  if (!w || w.owner_id !== req.user.id) return res.status(403).json({ error: 'Only owner can remove members' });
+  if (uid === w.owner_id) return res.status(400).json({ error: 'Cannot remove owner' });
+  store.removeWorkspaceMember(wid, uid);
+  res.json({ ok: true });
+});
+
 // GET collections structure (from DB or file)
 app.get('/api/collections', (req, res) => {
   try {
-    const data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    const data = readCollections(workspaceId);
     const flat = flattenRequests(data);
     let env = { baseUrl: '', bearerToken: '' };
     try {
@@ -620,9 +814,11 @@ function resolveForRequest(item, globalBaseUrl, globalToken, collectionVariables
 // POST send single request (payload, headers, auth from JSON)
 app.post('/api/send', async (req, res) => {
   try {
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
     const { requestId, baseUrl, bearerToken, collectionVariables } = req.body;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const data = readCollections();
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data) || data.length === 0) return res.status(400).json({ error: 'No collections loaded' });
     const flat = flattenRequests(data);
     const item = flat.find(r => r.id === requestId);
@@ -669,7 +865,9 @@ app.post('/api/run', async (req, res) => {
     const taskTimeoutMs = 35000;
     const minSuccessRate = Math.min(100, Math.max(0, parseFloat(sla.minSuccessRate) || 0));
     const maxP95Ms = Math.max(0, parseInt(sla.maxP95Ms, 10) || 0);
-    const data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data)) return res.status(400).json({ error: 'No collections loaded. Import JSON or add requests.' });
     const flat = flattenRequests(data);
 
@@ -857,7 +1055,9 @@ app.post('/api/collections/upload', (req, res) => {
     } else {
       return res.status(400).json({ error: 'Use Hoppscotch (array) or Postman (object with item[]) JSON' });
     }
-    writeCollections(collections);
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    writeCollections(collections, workspaceId);
     const flat = flattenRequests(collections);
     res.json({ ok: true, flat, collections });
   } catch (err) {
@@ -868,7 +1068,9 @@ app.post('/api/collections/upload', (req, res) => {
 // Export: get current collection as JSON (like Postman/Hoppscotch export)
 app.get('/api/collections/export', (req, res) => {
   try {
-    const data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data) || data.length === 0) return res.status(404).json({ error: 'No collection to export' });
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="collection.json"');
@@ -898,7 +1100,9 @@ function findRequestLocation(data, requestId) {
 // Add new collection
 app.post('/api/collections', (req, res) => {
   try {
-    let data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    let data = readCollections(workspaceId);
     if (!Array.isArray(data)) data = [];
     const name = (req.body && req.body.name) || 'New Collection';
     const newCol = {
@@ -909,7 +1113,7 @@ app.post('/api/collections', (req, res) => {
       requests: [],
     };
     data.push(newCol);
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -920,13 +1124,15 @@ app.post('/api/collections', (req, res) => {
 // Update collection (e.g. rename)
 app.patch('/api/collections/:index', (req, res) => {
   try {
-    let data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    let data = readCollections(workspaceId);
     if (!Array.isArray(data)) data = [];
     const index = parseInt(req.params.index, 10);
     if (isNaN(index) || index < 0 || index >= data.length) return res.status(400).json({ error: 'Invalid collection index' });
     const col = data[index];
     if (req.body && req.body.name != null) col.name = String(req.body.name).trim() || col.name || 'Collection';
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -937,12 +1143,14 @@ app.patch('/api/collections/:index', (req, res) => {
 // Delete collection by index
 app.delete('/api/collections/:index', (req, res) => {
   try {
-    let data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    let data = readCollections(workspaceId);
     if (!Array.isArray(data)) data = [];
     const index = parseInt(req.params.index, 10);
     if (isNaN(index) || index < 0 || index >= data.length) return res.status(400).json({ error: 'Invalid collection index' });
     data.splice(index, 1);
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -953,16 +1161,18 @@ app.delete('/api/collections/:index', (req, res) => {
 // Delete request by id
 app.delete('/api/collections/request/:requestId', (req, res) => {
   try {
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
     const requestId = req.params.requestId;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const data = readCollections();
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
     const col = data[loc.colIndex];
     const reqList = loc.folderIndex != null ? (col.folders[loc.folderIndex].requests || []) : (col.requests || []);
     reqList.splice(loc.requestIndex, 1);
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -973,10 +1183,12 @@ app.delete('/api/collections/request/:requestId', (req, res) => {
 // Update request (Save)
 app.put('/api/collections/request/:requestId', (req, res) => {
   try {
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
     const requestId = req.params.requestId;
     const updates = req.body && req.body.request ? req.body.request : req.body;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const data = readCollections();
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
@@ -988,7 +1200,7 @@ app.put('/api/collections/request/:requestId', (req, res) => {
     if (updates.headers != null) reqObj.headers = Array.isArray(updates.headers) ? updates.headers : [];
     if (updates.body != null) reqObj.body = updates.body;
     if (updates.auth != null) reqObj.auth = updates.auth;
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, collections: data, flat });
   } catch (err) {
@@ -999,9 +1211,11 @@ app.put('/api/collections/request/:requestId', (req, res) => {
 // Duplicate request (same folder)
 app.post('/api/collections/request/duplicate', (req, res) => {
   try {
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
     const requestId = req.body && req.body.requestId;
     if (!requestId) return res.status(400).json({ error: 'requestId required' });
-    const data = readCollections();
+    const data = readCollections(workspaceId);
     if (!Array.isArray(data)) return res.status(404).json({ error: 'No collections' });
     const loc = findRequestLocation(data, requestId);
     if (!loc) return res.status(404).json({ error: 'Request not found' });
@@ -1013,7 +1227,7 @@ app.post('/api/collections/request/duplicate', (req, res) => {
     newReq.id = newId;
     newReq.name = (oldReq.name || 'Request') + ' (copy)';
     reqList.splice(loc.requestIndex + 1, 0, newReq);
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, id: newId, collections: data, flat });
   } catch (err) {
@@ -1024,7 +1238,9 @@ app.post('/api/collections/request/duplicate', (req, res) => {
 // Add new API request to collection
 app.post('/api/collections/request', (req, res) => {
   try {
-    let data = readCollections();
+    const workspaceId = assertWorkspaceAccess(req, res);
+    if (workspaceId === false) return;
+    let data = readCollections(workspaceId);
     if (!Array.isArray(data)) data = [];
 
     const { collectionIndex = 0, folderIndex, request: newReq } = req.body;
@@ -1067,7 +1283,7 @@ app.post('/api/collections/request', (req, res) => {
       id,
     };
     reqList.push(reqObj);
-    writeCollections(data);
+    writeCollections(data, workspaceId);
     const flat = flattenRequests(data);
     res.json({ ok: true, id, flat, collections: data });
   } catch (err) {
