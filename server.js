@@ -29,7 +29,10 @@ const COLLECTIONS_PATH_ALT = path.join(process.cwd(), 'hoppscotch-team-collectio
 
 let store = null;
 function getStore() {
-  if (!IS_VERCEL && !store) {
+  if (store) return store;
+  if (IS_VERCEL) {
+    try { store = require('./store-vercel'); } catch (_) {}
+  } else {
     try { store = require('./db'); } catch (_) {}
   }
   return store;
