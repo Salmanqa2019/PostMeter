@@ -208,8 +208,40 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
-      overflow: hidden;
-      background: var(--bg);
+      position: relative;
+    }
+    .center-resize {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 8px;
+      cursor: col-resize;
+      z-index: 5;
+      background: transparent;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .center-resize:hover,
+    .center-resize:active { 
+      background: var(--accent-muted); 
+      width: 12px;
+    }
+    .center-resize .resize-indicator {
+      position: absolute;
+      right: 2px;
+      color: var(--text-muted);
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+    }
+    .center-resize:hover .resize-indicator {
+      opacity: 1;
     }
     .editor-bar {
       display: flex;
@@ -467,12 +499,34 @@
       right: 0;
       top: 0;
       bottom: 0;
-      width: 6px;
+      width: 8px;
       cursor: col-resize;
       z-index: 5;
+      background: transparent;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .sidebar-resize:hover,
-    .sidebar-resize:active { background: var(--accent-muted); }
+    .sidebar-resize:active { 
+      background: var(--accent-muted); 
+      width: 12px;
+    }
+    .resize-indicator {
+      position: absolute;
+      right: 2px;
+      color: var(--text-muted);
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+    }
+    .sidebar-resize:hover .resize-indicator {
+      opacity: 1;
+    }
     .sidebar {
       background: var(--surface);
       border-left: 1px solid var(--border);
@@ -1176,6 +1230,9 @@
     </aside>
 
     <main class="center">
+      <div class="center-resize" id="centerResize" title="Drag to resize">
+        <div class="resize-indicator">⋮</div>
+      </div>
       <div class="request-tabs-bar" id="requestTabsBar">
         <div class="request-tabs-list" id="requestTabsList"></div>
       </div>
@@ -1277,7 +1334,6 @@
     </main>
 
     <div class="sidebar-wrap" id="sidebarWrap">
-      <div class="sidebar-resize" id="sidebarResize" title="Drag to resize"></div>
       <aside class="sidebar">
         <div class="head">
           <span>Collections</span>
@@ -1948,7 +2004,7 @@
           setStatus('Adding request…');
           try {
             const newReq = { name: 'New Request', method: 'GET', endpoint: '<<baseUrl>>/api/', params: [], headers: [], body: { body: null, contentType: null } };
-            const { res, data } = await fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ collectionIndex: idx, folderIndex: null, request: newReq }) });
+            const { res, data } = await fetchJson('/api/collections/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withWorkspaceBody({ collectionIndex: idx, folderIndex: null, request: newReq })) });
             if (!res.ok) throw new Error(data.error || 'Add failed');
             flat = data.flat || []; collections = data.collections || [];
             const newId = data.id;
@@ -2283,7 +2339,7 @@
     (function initSidebarResizeAndExpand() {
       const app = document.querySelector('.app');
       const wrap = document.getElementById('sidebarWrap');
-      const resizeEl = document.getElementById('sidebarResize');
+      const resizeEl = document.getElementById('centerResize');
       const expandBtn = document.getElementById('expandSidebarBtn');
       const minW = 260, maxW = 720;
       const expandedWidth = Math.min(520, Math.max(400, Math.floor((typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth * 0.45 : 480)));
